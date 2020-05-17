@@ -1,0 +1,16 @@
+{
+  "name": "yeahml",
+  "description": "A tiny subset of YAML",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {},
+  "devDependencies": {
+    "tape": "^5.0.0"
+  },
+  "scripts": {
+    "test": "node test.js"
+  },
+  "author": "Vladimir Agafonkin",
+  "license": "ISC",
+  "keywords": []
+}
