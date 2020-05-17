@@ -3,12 +3,17 @@
   "description": "A tiny subset of YAML",
   "version": "1.0.0",
   "main": "index.js",
-  "dependencies": {},
   "devDependencies": {
+    "eslint": "^7.0.0",
+    "eslint-config-mourner": "^3.0.0",
     "tape": "^5.0.0"
   },
   "scripts": {
+    "pretest": "eslint index.js test.js",
     "test": "node test.js"
+  },
+  "eslintConfig": {
+    "extends": "mourner"
   },
   "author": "Vladimir Agafonkin",
   "license": "ISC",

@@ -4,7 +4,6 @@ exports.parse = parse;
 const BREAK = 10;
 const SPACE = 32;
 const HASH = 35;
-const HYPHEN = 45;
 const COLON = 58;
 
 const INDENT = 1;
