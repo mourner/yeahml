@@ -1,73 +1,109 @@
-
-exports.parse = parse;
+'use strict';
 
 const BREAK = 10;
 const SPACE = 32;
 const HASH = 35;
 const COLON = 58;
+const HYPHEN = 45;
 
-const INDENT = 1;
-const MAP = 2;
-const VAL = 3;
+const SCALAR = 0;
+const BLOCK_MAP = 1;
+const KEY = 2;
+const VALUE = 3;
+const BLOCK_SEQ = 4;
+const BLOCK_ENTRY = 5;
+const BLOCK_END = 6;
+const DOCUMENT_END = 7;
 
-const types = {
-    [INDENT]: 'indent',
-    [MAP]: 'map',
-    [VAL]: 'value'
-};
+const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END'];
 
-function parse(s) {
+function handleIndents(blockType, indents, indent, pos, tokens) {
+    if (indents.length === 0 || indent > indents[indents.length - 1]) {
+        indents.push(indent);
+        tokens.push(blockType, pos, pos);
+    } else {
+        while (indents.length && indent !== indents[indents.length - 1]) {
+            indents.pop();
+            tokens.push(BLOCK_END, pos, pos);
+        }
+    }
+}
+
+function tokenize(s) {
     let pos = 0;
     const tokens = [];
+    const indents = [];
     const len = s.length;
+    let indent = 0;
 
-    while (pos < len) {
+    while (pos <= len) {
         const start = pos;
-        let type;
         let c = s.charCodeAt(pos++);
 
-        if (c === HASH) {
+        if (c === HASH) { // comment
             while (pos < len && s.charCodeAt(pos) !== BREAK) pos++;
-            continue;
 
-        } else if (c === BREAK) {
+        } else if (c === BREAK) { // line break; save indent
             while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
-            type = INDENT;
+            indent = pos - start - 1;
 
-        } else if (c === SPACE) {
+        } else if (c === SPACE) { // spaces; skip
             while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
-            continue;
 
-        } else if (c === COLON && pos < len) {
-            c = s.charCodeAt(pos);
-            if (c === SPACE || c === BREAK) type = MAP;
-        }
+        } else if (c === HYPHEN && s.charCodeAt(pos) === SPACE) { // "- ": sequence entry
+            pos++;
+            indent++; // treat sequence entry as indented to support nested sequence on the same indentation
+            handleIndents(BLOCK_SEQ, indents, indent, start, tokens); // possibly end blocks or start new one
+            tokens.push(BLOCK_ENTRY, start, start);
+            indent++; // treat following tokens as indented for compact notation
 
-        if (!type) {
-            while (pos < len) {
+        } else if (c === HYPHEN && s.charCodeAt(pos) === BREAK) { // "-\n": indented sequence entry
+            handleIndents(BLOCK_SEQ, indents, indent, start, tokens);
+            tokens.push(BLOCK_ENTRY, start, start);
+
+        } else { // scalar
+            let numSpaces = 0;
+
+            while (pos <= len) {
                 c = s.charCodeAt(pos);
-                if (c === BREAK) {
+
+                // ends with line break, comment or EOF: scalar
+                if (c === BREAK || pos === len || (c === HASH && numSpaces > 0)) {
+                    tokens.push(SCALAR, start, pos - numSpaces);
                     break;
 
-                } else if (c === COLON) {
+                } else if (c === COLON) { // possible map key
                     c = s.charCodeAt(pos + 1);
-                    if (c === SPACE || c === BREAK) break;
 
-                } else if (c === SPACE) {
-                    if (s.charCodeAt(pos + 1) === HASH) break;
+                    if (c === SPACE || c === BREAK) { // ends with ": " or ":\n": block key/value pair
+                        handleIndents(BLOCK_MAP, indents, indent, start, tokens); // possibly end blocks or start new one
+                        tokens.push(KEY, start, start);
+                        tokens.push(SCALAR, start, pos - numSpaces);
+                        tokens.push(VALUE, pos, pos);
+                        pos++;
+                        break;
+                    }
                 }
+
+                numSpaces = c === SPACE ? numSpaces + 1 : 0; // track trailing spaces
                 pos++;
             }
-            type = VAL;
         }
-
-        tokens.push(type, start, pos);
     }
 
+    for (let i = 0; i < indents.length; i++) {
+        tokens.push(BLOCK_END, len, len);
+    }
+
+    tokens.push(DOCUMENT_END, len, len);
+
+    return tokens;
+}
+
+function parseTokens(s, tokens) {
     let i = 0;
     let nextType = tokens[0];
     let start, end;
-    let indent = 0;
 
     function accept(type) {
         if (nextType === type) {
@@ -80,49 +116,44 @@ function parse(s) {
         return false;
     }
 
-    function updateIndent() {
-        indent = end - start - 1;
-    }
-
     function expect(expectedType) {
         if (!accept(expectedType)) throw new Error(`Expected ${types[expectedType]}, got ${types[nextType]}.`);
     }
 
-    function block(expectedIndent) {
-        const map = {};
+    function block() {
+        if (accept(SCALAR)) {
+            return s.slice(start, end);
 
-        while (i < tokens.length && indent === expectedIndent) {
-            expect(VAL);
-            const key = s.slice(start, end);
-            expect(MAP);
+        } else if (accept(BLOCK_SEQ)) {
+            const seq = [];
+            while (accept(BLOCK_ENTRY)) seq.push(block());
+            expect(BLOCK_END);
+            return seq;
 
-            if (accept(VAL)) {
-                map[key] = s.slice(start, end);
-
-                if (i < tokens.length) {
-                    expect(INDENT);
-                    updateIndent();
-                }
-
-            } else {
-                expect(INDENT);
-                updateIndent();
-
-                if (indent > expectedIndent) {
-                    map[key] = block(indent);
-
-                } else {
-                    map[key] = '';
-                }
+        } else if (accept(BLOCK_MAP)) {
+            const map = {};
+            while (accept(KEY)) {
+                expect(SCALAR);
+                const key = s.slice(start, end);
+                expect(VALUE);
+                map[key] = block();
             }
-        }
-        if (i < tokens.length && indent > expectedIndent)
-            throw new Error(`Unexpected indent: ${indent}.`);
+            expect(BLOCK_END);
+            return map;
 
-        return map;
+        } else {
+            return null;
+        }
     }
 
-    accept(INDENT);
-    updateIndent();
-    return block(indent);
+    return block();
 }
+
+function parse(s) {
+    return parseTokens(s, tokenize(s));
+}
+
+exports.parse = parse;
+exports.parseTokens = parse;
+exports.tokenize = tokenize;
+exports.types = types;

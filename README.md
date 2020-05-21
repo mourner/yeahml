@@ -5,7 +5,7 @@ A JavaScript parser for a tiny subset of [YAML](https://yaml.org/) — a minima
 ## Key elements
 
 - [x] Key-value pairs (maps)
-- [ ] Lists (sequences)
+- [x] Lists (sequences)
 - [x] Plain string values
 - [ ] Single-quoted string values
 - [ ] Double-quoted string values
