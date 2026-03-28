@@ -1,7 +1,8 @@
-/* eslint indent: off */
+/* eslint @stylistic/indent: off */
 
-const {test} = require('tape');
-const {tokenize, parse, types} = require('./index.js');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {tokenize, parse, types} from './index.js';
 
 const test1 = `
 - foo:
@@ -36,8 +37,8 @@ function tokenizeNice(s) {
     return result;
 }
 
-test('tokenize', (t) => {
-    t.same(tokenizeNice(test1), [
+test('tokenize', () => {
+    assert.deepEqual(tokenizeNice(test1), [
         'BLOCK_SEQ',
         'BLOCK_ENTRY',
             'BLOCK_MAP',
@@ -55,7 +56,7 @@ test('tokenize', (t) => {
         'BLOCK_END',
         'DOCUMENT_END']);
 
-    t.same(tokenizeNice(test2),  [
+    assert.deepEqual(tokenizeNice(test2),  [
         'BLOCK_MAP',
         'KEY', 'hello', 'VALUE',
             'BLOCK_MAP',
@@ -78,13 +79,11 @@ test('tokenize', (t) => {
             'BLOCK_END',
         'BLOCK_END',
         'DOCUMENT_END']);
-
-    t.end();
 });
 
-test('parse', (t) => {
-    t.same(parse(test1), [{foo: {bak: '2'}}, {bar: 'foo', baz: '5'}]);
-    t.same(parse(test2), {
+test('parse', () => {
+    assert.deepEqual(parse(test1), [{foo: {bak: '2'}}, {bar: 'foo', baz: '5'}]);
+    assert.deepEqual(parse(test2), {
         hello: {
             oneasd: {
                 foo: null,
@@ -101,5 +100,4 @@ test('parse', (t) => {
             'big sea': 'green'
         }
     });
-    t.end();
 });

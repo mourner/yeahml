@@ -1,5 +1,3 @@
-'use strict';
-
 const BREAK = 10;
 const SPACE = 32;
 const HASH = 35;
@@ -15,7 +13,7 @@ const BLOCK_ENTRY = 5;
 const BLOCK_END = 6;
 const DOCUMENT_END = 7;
 
-const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END'];
+export const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END'];
 
 function handleIndents(blockType, indents, indent, pos, tokens) {
     if (indents.length === 0 || indent > indents[indents.length - 1]) {
@@ -29,7 +27,7 @@ function handleIndents(blockType, indents, indent, pos, tokens) {
     }
 }
 
-function tokenize(s) {
+export function tokenize(s) {
     let pos = 0;
     const tokens = [];
     const indents = [];
@@ -141,19 +139,13 @@ function parseTokens(s, tokens) {
             expect(BLOCK_END);
             return map;
 
-        } else {
-            return null;
         }
+        return null;
     }
 
     return block();
 }
 
-function parse(s) {
+export function parse(s) {
     return parseTokens(s, tokenize(s));
 }
-
-exports.parse = parse;
-exports.parseTokens = parse;
-exports.tokenize = tokenize;
-exports.types = types;
