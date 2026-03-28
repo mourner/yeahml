@@ -7,6 +7,7 @@ const HYPHEN = 45;
 const QUOTE_SINGLE = 39;
 const QUOTE_DOUBLE = 34;
 const BACKSLASH = 92;
+const PIPE = 124;
 
 const SCALAR = 0;
 const BLOCK_MAP = 1;
@@ -18,8 +19,10 @@ const BLOCK_END = 6;
 const DOCUMENT_END = 7;
 const SINGLE_QUOTED = 8;
 const DOUBLE_QUOTED = 9;
+const LITERAL_BLOCK = 10;
+const LITERAL_BLOCK_STRIP = 11;
 
-export const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END', 'SINGLE_QUOTED', 'DOUBLE_QUOTED'];
+export const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END', 'SINGLE_QUOTED', 'DOUBLE_QUOTED', 'LITERAL_BLOCK', 'LITERAL_BLOCK_STRIP'];
 
 const ESCAPES = {n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\'};
 
@@ -126,6 +129,35 @@ export function tokenize(s) {
                 tokens.push(tokenType, contentStart, contentEnd);
             }
 
+        } else if (c === PIPE && (s.charCodeAt(pos) === BREAK ||
+                   (s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === BREAK))) { // literal block scalar
+            lineStart = false;
+            const strip = s.charCodeAt(pos) === HYPHEN;
+            if (strip) pos++;
+            pos++; // past '\n'
+            const contentStart = pos;
+            while (pos < len) {
+                const lineBegin = pos;
+                while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
+                const lineIndent = pos - lineBegin;
+                if (pos >= len || s.charCodeAt(pos) === BREAK) { // empty line
+                    if (pos < len) pos++;
+                    continue;
+                }
+                if (lineIndent <= indent) { // end of block
+                    pos = lineBegin;
+                    break;
+                }
+                while (pos < len && s.charCodeAt(pos) !== BREAK) pos++;
+                if (pos < len) pos++;
+            }
+            tokens.push(strip ? LITERAL_BLOCK_STRIP : LITERAL_BLOCK, contentStart, pos);
+            let nextIndent = 0;
+            let p = pos;
+            while (p < len && s.charCodeAt(p) === SPACE) { nextIndent++; p++; }
+            indent = nextIndent;
+            lineStart = true;
+
         } else { // scalar
             lineStart = false;
             let numSpaces = 0;
@@ -211,6 +243,15 @@ function parseTokens(s, tokens) {
         return result;
     }
 
+    function parseLiteralBlock(lStart, lEnd, strip) {
+        const lines = s.slice(lStart, lEnd).split('\n');
+        if (lines.at(-1) === '') lines.pop();
+        const first = lines.find(l => l.trimStart() !== '');
+        const blockIndent = first ? first.length - first.trimStart().length : 0;
+        const result = lines.map(l => l.slice(blockIndent)).join('\n');
+        return strip ? result.replace(/\n*$/, '') : result.replace(/\n*$/, '\n');
+    }
+
     function acceptScalar() {
         if (accept(SCALAR)) return s.slice(start, end);
         if (accept(SINGLE_QUOTED)) return s.slice(start, end).replaceAll('\'\'', '\'');
@@ -250,6 +291,9 @@ function parseTokens(s, tokens) {
             expect(BLOCK_END);
             return map;
         }
+
+        if (accept(LITERAL_BLOCK)) return parseLiteralBlock(start, end, false);
+        if (accept(LITERAL_BLOCK_STRIP)) return parseLiteralBlock(start, end, true);
 
         return null;
     }

@@ -153,6 +153,22 @@ test('double-quoted strings', () => {
     assert.throws(() => parse('"spans\nlines"'), {message: 'Unterminated string at line 1, col 1.'});
 });
 
+test('literal block strings', () => {
+    // clip (|): keeps one trailing newline
+    assert.deepEqual(parse('key: |\n  line 1\n  line 2\n'), {key: 'line 1\nline 2\n'});
+    assert.deepEqual(parse('key: |\n  line 1\n  line 2\nnext: value'), {key: 'line 1\nline 2\n', next: 'value'});
+
+    // strip (|-): removes all trailing newlines
+    assert.deepEqual(parse('key: |-\n  line 1\n  line 2\n'), {key: 'line 1\nline 2'});
+
+    // nested
+    assert.deepEqual(parse('outer:\n  key: |\n    inner\n'), {outer: {key: 'inner\n'}});
+
+    // empty block
+    assert.deepEqual(parse('key: |\nnext: value'), {key: '\n', next: 'value'});
+    assert.deepEqual(parse('key: |-\nnext: value'), {key: '', next: 'value'});
+});
+
 test('parse', () => {
     assert.deepEqual(parse(seqOfMaps), [{foo: {bak: '2'}}, {bar: 'foo', baz: '5'}]);
     assert.deepEqual(parse(nestedDoc), {

@@ -9,7 +9,7 @@ A JavaScript parser for a tiny subset of [YAML](https://yaml.org/) — a minimal
 - [x] Plain string values
 - [x] Single-quoted string values
 - [x] Double-quoted string values
-- [ ] Multi-line string literals
+- [x] Multi-line string literals (`|` clip, `|-` strip)
 - [x] Comments
 
 ## No intention to support
