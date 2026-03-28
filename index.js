@@ -8,6 +8,7 @@ const QUOTE_SINGLE = 39;
 const QUOTE_DOUBLE = 34;
 const BACKSLASH = 92;
 const PIPE = 124;
+const PERIOD = 46;
 
 const SCALAR = 0;
 const BLOCK_MAP = 1;
@@ -24,7 +25,20 @@ const LITERAL_BLOCK_STRIP = 11;
 
 const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END', 'SINGLE_QUOTED', 'DOUBLE_QUOTED', 'LITERAL_BLOCK', 'LITERAL_BLOCK_STRIP'];
 
-const ESCAPES = {n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\'};
+const ESCAPES = {
+    '0': '\0',
+    a: '\x07',
+    b: '\b',
+    t: '\t',
+    n: '\n',
+    v: '\v',
+    f: '\f',
+    r: '\r',
+    e: '\x1B',
+    '"': '"',
+    '/': '/',
+    '\\': '\\'
+};
 
 function posToLineCol(s, pos) {
     let line = 1, col = 1;
@@ -68,7 +82,16 @@ function tokenize(s) {
         } else if (c === BREAK) { // line break; save indent
             while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
             if (pos < len && s.charCodeAt(pos) === TAB) {
-                throw new Error(`Tab character in indentation at ${posToLineCol(s, pos)}.`);
+                // scan ahead: if rest of line is only whitespace, it's a blank line — skip it
+                let p = pos;
+                while (p < len && s.charCodeAt(p) !== BREAK) {
+                    if (s.charCodeAt(p) !== SPACE && s.charCodeAt(p) !== TAB) {
+                        throw new Error(`Tab character in indentation at ${posToLineCol(s, pos)}.`);
+                    }
+                    p++;
+                }
+                pos = p; // at next BREAK or EOF; outer loop will handle it
+                continue;
             }
             indent = pos - start - 1;
             lineStart = true;
@@ -77,8 +100,12 @@ function tokenize(s) {
             while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
 
         } else if (lineStart && c === HYPHEN && s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === HYPHEN &&
-                   (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK)) { // "---": document separator, skip
+                   (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK || s.charCodeAt(pos + 2) === SPACE)) { // "---": document separator, skip
             pos += 2;
+
+        } else if (lineStart && c === PERIOD && s.charCodeAt(pos) === PERIOD && s.charCodeAt(pos + 1) === PERIOD &&
+                   (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK || s.charCodeAt(pos + 2) === SPACE)) { // "...": document end marker
+            break;
 
         } else if (c === HYPHEN && s.charCodeAt(pos) === SPACE) { // "- ": sequence entry
             lineStart = false;
@@ -136,6 +163,7 @@ function tokenize(s) {
             if (strip) pos++;
             pos++; // past '\n'
             const contentStart = pos;
+            let blockIndent = -1;
             while (pos < len) {
                 const lineBegin = pos;
                 while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
@@ -144,7 +172,10 @@ function tokenize(s) {
                     if (pos < len) pos++;
                     continue;
                 }
-                if (lineIndent <= indent) { // end of block
+                if (blockIndent === -1) {
+                    if (lineIndent <= indent) { pos = lineBegin; break; } // empty block
+                    blockIndent = lineIndent;
+                } else if (lineIndent < blockIndent) { // end of block
                     pos = lineBegin;
                     break;
                 }
@@ -182,7 +213,7 @@ function tokenize(s) {
                     }
                 }
 
-                numSpaces = c === SPACE ? numSpaces + 1 : 0; // track trailing spaces
+                numSpaces = (c === SPACE || c === TAB) ? numSpaces + 1 : 0; // track trailing spaces/tabs
                 pos++;
             }
         }
@@ -226,7 +257,10 @@ function parseTokens(s, tokens) {
             if (s.charCodeAt(j) === BACKSLASH) {
                 j++;
                 const esc = s[j];
-                if (esc === 'u') {
+                if (esc === 'x') {
+                    result += String.fromCharCode(parseInt(s.slice(j + 1, j + 3), 16));
+                    j += 2;
+                } else if (esc === 'u') {
                     result += String.fromCharCode(parseInt(s.slice(j + 1, j + 5), 16));
                     j += 4;
                 } else if (esc in ESCAPES) {
@@ -297,7 +331,9 @@ function parseTokens(s, tokens) {
         return null;
     }
 
-    return block();
+    const result = block();
+    expect(DOCUMENT_END);
+    return result;
 }
 
 export function parse(s) {
