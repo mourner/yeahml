@@ -40,15 +40,15 @@ export function tokenize(s) {
     let lineStart = true;
 
     function handleIndents(blockType, blockIndent, blockPos) {
-        if (!indents.length || blockIndent > indents.at(-1)) {
+        if (indents.length === 0 || blockIndent > indents.at(-1)) {
             indents.push(blockIndent);
             tokens.push(blockType, blockPos, blockPos);
         } else {
-            while (indents.length && blockIndent !== indents.at(-1)) {
+            while (indents.length > 0 && blockIndent !== indents.at(-1)) {
                 indents.pop();
                 tokens.push(BLOCK_END, blockPos, blockPos);
             }
-            if (!indents.length) {
+            if (indents.length === 0) {
                 throw new Error(`Bad indentation at ${posToLineCol(s, blockPos)}.`);
             }
         }

@@ -4,13 +4,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {tokenize, parse, types} from './index.js';
 
-const test1 = `
+// sequence of maps with nesting
+const seqOfMaps = `
 - foo:
     bak: 2
 - bar: foo
   baz: 5`;
 
-const test2 = `
+// complex nested maps and sequences with comments and null values
+const nestedDoc = `
 hello:  # foo
   oneasd:
     foo:
@@ -26,20 +28,19 @@ mapping:
 function tokenizeNice(s) {
     const tokens = tokenize(s);
     const result = [];
-
     for (let i = 0; i < tokens.length; i += 3) {
         const type = tokens[i];
         const start = tokens[i + 1];
         const end = tokens[i + 2];
         const name = types[type];
-        result.push(name === 'SCALAR' || name === 'SINGLE_QUOTED' || name === 'DOUBLE_QUOTED' ? s.slice(start, end) : name);
+        const isScalar = name === 'SCALAR' || name === 'SINGLE_QUOTED' || name === 'DOUBLE_QUOTED';
+        result.push(isScalar ? s.slice(start, end) : name);
     }
-
     return result;
 }
 
 test('tokenize', () => {
-    assert.deepEqual(tokenizeNice(test1), [
+    assert.deepEqual(tokenizeNice(seqOfMaps), [
         'BLOCK_SEQ',
         'BLOCK_ENTRY',
             'BLOCK_MAP',
@@ -57,7 +58,7 @@ test('tokenize', () => {
         'BLOCK_END',
         'DOCUMENT_END']);
 
-    assert.deepEqual(tokenizeNice(test2),  [
+    assert.deepEqual(tokenizeNice(nestedDoc), [
         'BLOCK_MAP',
         'KEY', 'hello', 'VALUE',
             'BLOCK_MAP',
@@ -94,7 +95,7 @@ test('document separator', () => {
 });
 
 test('tab indentation', () => {
-    assert.throws(() => parse('foo:\n\tbar: 1'), /Tab character in indentation at line 2, col 1\./);
+    assert.throws(() => parse('foo:\n\tbar: 1'), {message: 'Tab character in indentation at line 2, col 1.'});
 });
 
 test('--- in value position', () => {
@@ -103,42 +104,40 @@ test('--- in value position', () => {
 });
 
 test('bad indentation', () => {
-    // indent doesn't match any open block level; error includes exact line and col
-    assert.throws(() => parse('foo:\n  bar: 1\n baz: 2'), /Bad indentation at line 3, col 2\./);
-    assert.throws(() => parse('a: 1\n  b: 2\n c: 3'), /Bad indentation at line 3, col 2\./);
+    assert.throws(() => parse('foo:\n  bar: 1\n baz: 2'), {message: 'Bad indentation at line 3, col 2.'});
+    assert.throws(() => parse('a: 1\n  b: 2\n c: 3'), {message: 'Bad indentation at line 3, col 2.'});
 });
 
 test('duplicate keys', () => {
-    // error includes key name and exact position of the duplicate
-    assert.throws(() => parse('foo: 1\nfoo: 2'), /Duplicate key "foo" at line 2, col 1\./);
-    assert.throws(() => parse('foo:\n  bar: 1\n  bar: 2'), /Duplicate key "bar" at line 3, col 3\./);
+    assert.throws(() => parse('foo: 1\nfoo: 2'), {message: 'Duplicate key "foo" at line 2, col 1.'});
+    assert.throws(() => parse('foo:\n  bar: 1\n  bar: 2'), {message: 'Duplicate key "bar" at line 3, col 3.'});
+    assert.throws(() => parse("'foo': 1\n'foo': 2"), {message: 'Duplicate key "foo" at line 2, col 2.'});
 });
 
 test('single-quoted strings', () => {
-    // tokenizer emits raw content (without quotes, '' not yet unescaped)
-    assert.deepEqual(tokenizeNice('\'hello world\''), ['hello world', 'DOCUMENT_END']);
-    assert.deepEqual(tokenizeNice('\'it\'\'\'\'s\''), ['it\'\'\'\'s', 'DOCUMENT_END']);
-    assert.deepEqual(tokenizeNice('\'key\': value'), ['BLOCK_MAP', 'KEY', 'key', 'VALUE', 'value', 'BLOCK_END', 'DOCUMENT_END']);
+    // tokenizer emits raw content between quotes, '' escape not yet processed
+    assert.deepEqual(tokenizeNice("'hello world'"), ['hello world', 'DOCUMENT_END']);
+    assert.deepEqual(tokenizeNice("'key': value"), ['BLOCK_MAP', 'KEY', 'key', 'VALUE', 'value', 'BLOCK_END', 'DOCUMENT_END']);
 
-    // parser resolves '' escapes and strips quotes
-    assert.equal(parse('\'hello world\''), 'hello world');
-    assert.equal(parse('\'it\'\'s\''), 'it\'s');
-    assert.equal(parse('\'\''), '');
-    assert.deepEqual(parse('\'key\': value'), {key: 'value'});
-    assert.deepEqual(parse('\'foo: bar\''), 'foo: bar'); // colon doesn't make it a key
-    assert.deepEqual(parse('\'- item\''), '- item');     // hyphen doesn't make it a sequence
+    // parser strips quotes and resolves '' -> '
+    assert.equal(parse("'hello world'"), 'hello world');
+    assert.equal(parse("'it''s'"), "it's");
+    assert.equal(parse("''"), '');
+    assert.deepEqual(parse("'key': value"), {key: 'value'});
+    assert.deepEqual(parse("'foo: bar'"), 'foo: bar'); // colon doesn't make it a key
+    assert.deepEqual(parse("'- item'"), '- item');     // hyphen doesn't make it a sequence
+    assert.deepEqual(parse("- 'hello'"), ['hello']);   // quoted value in sequence
 
-    // unterminated
-    assert.throws(() => parse('\'unterminated'), /Unterminated string at line 1, col 1\./);
-    assert.throws(() => parse('\'spans\nlines\''), /Unterminated string at line 1, col 1\./);
+    assert.throws(() => parse("'unterminated"), {message: 'Unterminated string at line 1, col 1.'});
+    assert.throws(() => parse("'spans\nlines'"), {message: 'Unterminated string at line 1, col 1.'});
 });
 
 test('double-quoted strings', () => {
-    // tokenizer emits raw content (without quotes, escapes not yet processed)
+    // tokenizer emits raw content between quotes, escapes not yet processed
     assert.deepEqual(tokenizeNice('"hello world"'), ['hello world', 'DOCUMENT_END']);
     assert.deepEqual(tokenizeNice('"key": value'), ['BLOCK_MAP', 'KEY', 'key', 'VALUE', 'value', 'BLOCK_END', 'DOCUMENT_END']);
 
-    // parser processes escapes
+    // parser strips quotes and processes escape sequences
     assert.equal(parse('"hello world"'), 'hello world');
     assert.equal(parse('"hello\\nworld"'), 'hello\nworld');
     assert.equal(parse('"hello\\tworld"'), 'hello\tworld');
@@ -147,18 +146,16 @@ test('double-quoted strings', () => {
     assert.equal(parse('"\\u0041"'), 'A');
     assert.equal(parse('""'), '');
     assert.deepEqual(parse('"key": value'), {key: 'value'});
+    assert.deepEqual(parse('- "hello"'), ['hello']); // quoted value in sequence
 
-    // unknown escape
-    assert.throws(() => parse('"\\q"'), /Unknown escape sequence/);
-
-    // unterminated
-    assert.throws(() => parse('"unterminated'), /Unterminated string at line 1, col 1\./);
-    assert.throws(() => parse('"spans\nlines"'), /Unterminated string at line 1, col 1\./);
+    assert.throws(() => parse('"\\q"'), {message: 'Unknown escape sequence "\\q" at line 1, col 3.'});
+    assert.throws(() => parse('"unterminated'), {message: 'Unterminated string at line 1, col 1.'});
+    assert.throws(() => parse('"spans\nlines"'), {message: 'Unterminated string at line 1, col 1.'});
 });
 
 test('parse', () => {
-    assert.deepEqual(parse(test1), [{foo: {bak: '2'}}, {bar: 'foo', baz: '5'}]);
-    assert.deepEqual(parse(test2), {
+    assert.deepEqual(parse(seqOfMaps), [{foo: {bak: '2'}}, {bar: 'foo', baz: '5'}]);
+    assert.deepEqual(parse(nestedDoc), {
         hello: {
             oneasd: {
                 foo: null,
