@@ -1,4 +1,5 @@
 const BREAK = 10;
+const TAB = 9;
 const SPACE = 32;
 const HASH = 35;
 const COLON = 58;
@@ -29,6 +30,7 @@ export function tokenize(s) {
     const indents = [];
     const len = s.length;
     let indent = 0;
+    let lineStart = true;
 
     function handleIndents(blockType, blockIndent, blockPos) {
         if (indents.length === 0 || blockIndent > indents[indents.length - 1]) {
@@ -50,20 +52,26 @@ export function tokenize(s) {
         let c = s.charCodeAt(pos++);
 
         if (c === HASH) { // comment
+            lineStart = false;
             while (pos < len && s.charCodeAt(pos) !== BREAK) pos++;
 
         } else if (c === BREAK) { // line break; save indent
             while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
+            if (pos < len && s.charCodeAt(pos) === TAB) {
+                throw new Error(`Tab character in indentation at ${posToLineCol(s, pos)}.`);
+            }
             indent = pos - start - 1;
+            lineStart = true;
 
         } else if (c === SPACE) { // spaces; skip
             while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
 
-        } else if (c === HYPHEN && s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === HYPHEN &&
+        } else if (lineStart && c === HYPHEN && s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === HYPHEN &&
                    (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK)) { // "---": document separator, skip
             pos += 2;
 
         } else if (c === HYPHEN && s.charCodeAt(pos) === SPACE) { // "- ": sequence entry
+            lineStart = false;
             pos++;
             indent++; // treat sequence entry as indented to support nested sequence on the same indentation
             handleIndents(BLOCK_SEQ, indent, start); // possibly end blocks or start new one
@@ -71,10 +79,12 @@ export function tokenize(s) {
             indent++; // treat following tokens as indented for compact notation
 
         } else if (c === HYPHEN && s.charCodeAt(pos) === BREAK) { // "-\n": indented sequence entry
+            lineStart = false;
             handleIndents(BLOCK_SEQ, indent, start);
             tokens.push(BLOCK_ENTRY, start, start);
 
         } else { // scalar
+            lineStart = false;
             let numSpaces = 0;
 
             while (pos <= len) {

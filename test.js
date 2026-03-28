@@ -92,6 +92,15 @@ test('document separator', () => {
     assert.deepEqual(parse('---\nfoo: bar'), {foo: 'bar'});
 });
 
+test('tab indentation', () => {
+    assert.throws(() => parse('foo:\n\tbar: 1'), /Tab character in indentation at line 2, col 1\./);
+});
+
+test('--- in value position', () => {
+    assert.deepEqual(parse('foo: ---'), {foo: '---'});
+    assert.deepEqual(parse('foo: ---\nbar: baz'), {foo: '---', bar: 'baz'});
+});
+
 test('bad indentation', () => {
     // indent doesn't match any open block level; error includes exact line and col
     assert.throws(() => parse('foo:\n  bar: 1\n baz: 2'), /Bad indentation at line 3, col 2\./);
