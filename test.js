@@ -81,6 +81,17 @@ test('tokenize', () => {
         'DOCUMENT_END']);
 });
 
+test('bad indentation', () => {
+    // indent doesn't match any open block level
+    assert.throws(() => parse('foo:\n  bar: 1\n baz: 2'), /Bad indentation at line 3/);
+    assert.throws(() => parse('a: 1\n  b: 2\n c: 3'), /Bad indentation at line 3/);
+});
+
+test('duplicate keys', () => {
+    assert.throws(() => parse('foo: 1\nfoo: 2'), /Duplicate key "foo"/);
+    assert.throws(() => parse('foo:\n  bar: 1\n  bar: 2'), /Duplicate key "bar"/);
+});
+
 test('parse', () => {
     assert.deepEqual(parse(test1), [{foo: {bak: '2'}}, {bar: 'foo', baz: '5'}]);
     assert.deepEqual(parse(test2), {

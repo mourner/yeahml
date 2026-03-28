@@ -15,16 +15,12 @@ const DOCUMENT_END = 7;
 
 export const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END'];
 
-function handleIndents(blockType, indents, indent, pos, tokens) {
-    if (indents.length === 0 || indent > indents[indents.length - 1]) {
-        indents.push(indent);
-        tokens.push(blockType, pos, pos);
-    } else {
-        while (indents.length && indent !== indents[indents.length - 1]) {
-            indents.pop();
-            tokens.push(BLOCK_END, pos, pos);
-        }
+function posToLineCol(s, pos) {
+    let line = 1, col = 1;
+    for (let i = 0; i < pos; i++) {
+        if (s.charCodeAt(i) === BREAK) { line++; col = 1; } else col++;
     }
+    return `line ${line}, col ${col}`;
 }
 
 export function tokenize(s) {
@@ -33,6 +29,21 @@ export function tokenize(s) {
     const indents = [];
     const len = s.length;
     let indent = 0;
+
+    function handleIndents(blockType, blockIndent, blockPos) {
+        if (indents.length === 0 || blockIndent > indents[indents.length - 1]) {
+            indents.push(blockIndent);
+            tokens.push(blockType, blockPos, blockPos);
+        } else {
+            while (indents.length && blockIndent !== indents[indents.length - 1]) {
+                indents.pop();
+                tokens.push(BLOCK_END, blockPos, blockPos);
+            }
+            if (indents.length === 0) {
+                throw new Error(`Bad indentation at ${posToLineCol(s, blockPos)}.`);
+            }
+        }
+    }
 
     while (pos <= len) {
         const start = pos;
@@ -51,12 +62,12 @@ export function tokenize(s) {
         } else if (c === HYPHEN && s.charCodeAt(pos) === SPACE) { // "- ": sequence entry
             pos++;
             indent++; // treat sequence entry as indented to support nested sequence on the same indentation
-            handleIndents(BLOCK_SEQ, indents, indent, start, tokens); // possibly end blocks or start new one
+            handleIndents(BLOCK_SEQ, indent, start); // possibly end blocks or start new one
             tokens.push(BLOCK_ENTRY, start, start);
             indent++; // treat following tokens as indented for compact notation
 
         } else if (c === HYPHEN && s.charCodeAt(pos) === BREAK) { // "-\n": indented sequence entry
-            handleIndents(BLOCK_SEQ, indents, indent, start, tokens);
+            handleIndents(BLOCK_SEQ, indent, start);
             tokens.push(BLOCK_ENTRY, start, start);
 
         } else { // scalar
@@ -74,7 +85,7 @@ export function tokenize(s) {
                     c = s.charCodeAt(pos + 1);
 
                     if (c === SPACE || c === BREAK) { // ends with ": " or ":\n": block key/value pair
-                        handleIndents(BLOCK_MAP, indents, indent, start, tokens); // possibly end blocks or start new one
+                        handleIndents(BLOCK_MAP, indent, start); // possibly end blocks or start new one
                         tokens.push(KEY, start, start);
                         tokens.push(SCALAR, start, pos - numSpaces);
                         tokens.push(VALUE, pos, pos);
@@ -115,7 +126,9 @@ function parseTokens(s, tokens) {
     }
 
     function expect(expectedType) {
-        if (!accept(expectedType)) throw new Error(`Expected ${types[expectedType]}, got ${types[nextType]}.`);
+        if (!accept(expectedType)) {
+            throw new Error(`Expected ${types[expectedType]}, got ${types[nextType]} at ${posToLineCol(s, tokens[i + 1])}.`);
+        }
     }
 
     function block() {
@@ -130,9 +143,14 @@ function parseTokens(s, tokens) {
 
         } else if (accept(BLOCK_MAP)) {
             const map = {};
+            const seen = new Set();
             while (accept(KEY)) {
                 expect(SCALAR);
                 const key = s.slice(start, end);
+                if (seen.has(key)) {
+                    throw new Error(`Duplicate key "${key}" at ${posToLineCol(s, start)}.`);
+                }
+                seen.add(key);
                 expect(VALUE);
                 map[key] = block();
             }
