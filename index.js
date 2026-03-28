@@ -152,10 +152,9 @@ export function tokenize(s) {
                 if (pos < len) pos++;
             }
             tokens.push(strip ? LITERAL_BLOCK_STRIP : LITERAL_BLOCK, contentStart, pos);
-            let nextIndent = 0;
             let p = pos;
-            while (p < len && s.charCodeAt(p) === SPACE) { nextIndent++; p++; }
-            indent = nextIndent;
+            while (p < len && s.charCodeAt(p) === SPACE) p++;
+            indent = p - pos;
             lineStart = true;
 
         } else { // scalar
@@ -247,9 +246,9 @@ function parseTokens(s, tokens) {
         const lines = s.slice(lStart, lEnd).split('\n');
         if (lines.at(-1) === '') lines.pop();
         const first = lines.find(l => l.trimStart() !== '');
-        const blockIndent = first ? first.length - first.trimStart().length : 0;
+        const blockIndent = first ? first.search(/[^ ]/) : 0;
         const result = lines.map(l => l.slice(blockIndent)).join('\n');
-        return strip ? result.replace(/\n*$/, '') : result.replace(/\n*$/, '\n');
+        return result.replace(/\n*$/, strip ? '' : '\n');
     }
 
     function acceptScalar() {

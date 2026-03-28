@@ -4,18 +4,17 @@
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",
+  "sideEffects": false,
   "devDependencies": {
     "eslint": "^10.1.0",
     "eslint-config-mourner": "^4.1.0"
   },
   "scripts": {
     "pretest": "eslint index.js test.js",
-    "test": "node test.js"
-  },
-  "eslintConfig": {
-    "extends": "mourner"
+    "test": "node test.js",
+    "cov": "node --experimental-test-coverage test.js"
   },
   "author": "Vladimir Agafonkin",
   "license": "ISC",
-  "keywords": []
+  "keywords": ["yaml", "format"]
 }
