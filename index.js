@@ -22,7 +22,7 @@ const DOUBLE_QUOTED = 9;
 const LITERAL_BLOCK = 10;
 const LITERAL_BLOCK_STRIP = 11;
 
-export const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END', 'SINGLE_QUOTED', 'DOUBLE_QUOTED', 'LITERAL_BLOCK', 'LITERAL_BLOCK_STRIP'];
+const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END', 'SINGLE_QUOTED', 'DOUBLE_QUOTED', 'LITERAL_BLOCK', 'LITERAL_BLOCK_STRIP'];
 
 const ESCAPES = {n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\'};
 
@@ -34,7 +34,7 @@ function posToLineCol(s, pos) {
     return `line ${line}, col ${col}`;
 }
 
-export function tokenize(s) {
+function tokenize(s) {
     let pos = 0;
     const tokens = [];
     const indents = [];

@@ -1,8 +1,6 @@
-/* eslint @stylistic/indent: off */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {tokenize, parse, types} from './index.js';
+import {parse} from './index.js';
 
 // sequence of maps with nesting
 const seqOfMaps = `
@@ -24,64 +22,6 @@ two: 20
 mapping:
   sky: blue
   big sea: green`;
-
-function tokenizeNice(s) {
-    const tokens = tokenize(s);
-    const result = [];
-    for (let i = 0; i < tokens.length; i += 3) {
-        const type = tokens[i];
-        const start = tokens[i + 1];
-        const end = tokens[i + 2];
-        const name = types[type];
-        const isScalar = name === 'SCALAR' || name === 'SINGLE_QUOTED' || name === 'DOUBLE_QUOTED';
-        result.push(isScalar ? s.slice(start, end) : name);
-    }
-    return result;
-}
-
-test('tokenize', () => {
-    assert.deepEqual(tokenizeNice(seqOfMaps), [
-        'BLOCK_SEQ',
-        'BLOCK_ENTRY',
-            'BLOCK_MAP',
-            'KEY', 'foo', 'VALUE',
-                'BLOCK_MAP',
-                'KEY', 'bak',
-                'VALUE', '2',
-                'BLOCK_END',
-            'BLOCK_END',
-        'BLOCK_ENTRY',
-            'BLOCK_MAP',
-            'KEY', 'bar', 'VALUE', 'foo',
-            'KEY', 'baz', 'VALUE', '5',
-            'BLOCK_END',
-        'BLOCK_END',
-        'DOCUMENT_END']);
-
-    assert.deepEqual(tokenizeNice(nestedDoc), [
-        'BLOCK_MAP',
-        'KEY', 'hello', 'VALUE',
-            'BLOCK_MAP',
-            'KEY', 'oneasd', 'VALUE',
-                'BLOCK_MAP',
-                'KEY', 'foo', 'VALUE',
-                'KEY', 'baz', 'VALUE', 'ff',
-                'KEY', 'bar', 'VALUE',
-                    'BLOCK_SEQ',
-                    'BLOCK_ENTRY', 'BLOCK_MAP', 'KEY', 'foo', 'VALUE', 'bar', 'BLOCK_END',
-                    'BLOCK_ENTRY', 'baz',
-                    'BLOCK_END',
-                'BLOCK_END',
-            'BLOCK_END',
-        'KEY', 'two', 'VALUE', '20',
-        'KEY', 'mapping', 'VALUE',
-            'BLOCK_MAP',
-            'KEY', 'sky', 'VALUE', 'blue',
-            'KEY', 'big sea', 'VALUE', 'green',
-            'BLOCK_END',
-        'BLOCK_END',
-        'DOCUMENT_END']);
-});
 
 test('empty document', () => {
     assert.equal(parse(''), null);
@@ -115,11 +55,6 @@ test('duplicate keys', () => {
 });
 
 test('single-quoted strings', () => {
-    // tokenizer emits raw content between quotes, '' escape not yet processed
-    assert.deepEqual(tokenizeNice("'hello world'"), ['hello world', 'DOCUMENT_END']);
-    assert.deepEqual(tokenizeNice("'key': value"), ['BLOCK_MAP', 'KEY', 'key', 'VALUE', 'value', 'BLOCK_END', 'DOCUMENT_END']);
-
-    // parser strips quotes and resolves '' -> '
     assert.equal(parse("'hello world'"), 'hello world');
     assert.equal(parse("'it''s'"), "it's");
     assert.equal(parse("''"), '');
@@ -133,11 +68,6 @@ test('single-quoted strings', () => {
 });
 
 test('double-quoted strings', () => {
-    // tokenizer emits raw content between quotes, escapes not yet processed
-    assert.deepEqual(tokenizeNice('"hello world"'), ['hello world', 'DOCUMENT_END']);
-    assert.deepEqual(tokenizeNice('"key": value'), ['BLOCK_MAP', 'KEY', 'key', 'VALUE', 'value', 'BLOCK_END', 'DOCUMENT_END']);
-
-    // parser strips quotes and processes escape sequences
     assert.equal(parse('"hello world"'), 'hello world');
     assert.equal(parse('"hello\\nworld"'), 'hello\nworld');
     assert.equal(parse('"hello\\tworld"'), 'hello\tworld');
