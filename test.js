@@ -43,6 +43,11 @@ test('--- in value position', () => {
     assert.deepEqual(parse('foo: ---\nbar: baz'), {foo: '---', bar: 'baz'});
 });
 
+test('block sequence with newline entry', () => {
+    assert.deepEqual(parse('-\n  value'), ['value']);
+    assert.deepEqual(parse('-\n  foo: bar'), [{foo: 'bar'}]);
+});
+
 test('bad indentation', () => {
     assert.throws(() => parse('foo:\n  bar: 1\n baz: 2'), {message: 'Bad indentation at line 3, col 2.'});
     assert.throws(() => parse('a: 1\n  b: 2\n c: 3'), {message: 'Bad indentation at line 3, col 2.'});
@@ -97,6 +102,9 @@ test('literal block strings', () => {
     // empty block
     assert.deepEqual(parse('key: |\nnext: value'), {key: '\n', next: 'value'});
     assert.deepEqual(parse('key: |-\nnext: value'), {key: '', next: 'value'});
+
+    // trailing whitespace-only line at EOF (no final newline)
+    assert.deepEqual(parse('key: |\n  content\n  '), {key: 'content\n'});
 });
 
 test('parse', () => {
