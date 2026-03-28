@@ -4,6 +4,9 @@ const SPACE = 32;
 const HASH = 35;
 const COLON = 58;
 const HYPHEN = 45;
+const QUOTE_SINGLE = 39;
+const QUOTE_DOUBLE = 34;
+const BACKSLASH = 92;
 
 const SCALAR = 0;
 const BLOCK_MAP = 1;
@@ -13,8 +16,10 @@ const BLOCK_SEQ = 4;
 const BLOCK_ENTRY = 5;
 const BLOCK_END = 6;
 const DOCUMENT_END = 7;
+const SINGLE_QUOTED = 8;
+const DOUBLE_QUOTED = 9;
 
-export const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END'];
+export const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END', 'SINGLE_QUOTED', 'DOUBLE_QUOTED'];
 
 function posToLineCol(s, pos) {
     let line = 1, col = 1;
@@ -83,6 +88,42 @@ export function tokenize(s) {
             handleIndents(BLOCK_SEQ, indent, start);
             tokens.push(BLOCK_ENTRY, start, start);
 
+        } else if (c === QUOTE_SINGLE || c === QUOTE_DOUBLE) { // quoted scalar
+            lineStart = false;
+            const quote = c;
+            const contentStart = pos;
+            while (pos < len) {
+                c = s.charCodeAt(pos);
+                if (c === BREAK) throw new Error(`Unterminated string at ${posToLineCol(s, start)}.`);
+                if (c === quote) {
+                    if (quote === QUOTE_SINGLE && s.charCodeAt(pos + 1) === QUOTE_SINGLE) {
+                        pos += 2; // '' escape in single-quoted strings
+                    } else {
+                        break; // closing quote found
+                    }
+                } else {
+                    if (quote === QUOTE_DOUBLE && c === BACKSLASH) pos++; // skip escaped char
+                    pos++;
+                }
+            }
+            if (pos >= len) throw new Error(`Unterminated string at ${posToLineCol(s, start)}.`);
+            const contentEnd = pos;
+            pos++; // past closing quote
+            const tokenType = quote === QUOTE_SINGLE ? SINGLE_QUOTED : DOUBLE_QUOTED;
+            // check if it's a map key (": " or ":\n" follows, ignoring spaces)
+            let afterClose = pos;
+            while (afterClose < len && s.charCodeAt(afterClose) === SPACE) afterClose++;
+            if (s.charCodeAt(afterClose) === COLON &&
+                (s.charCodeAt(afterClose + 1) === SPACE || s.charCodeAt(afterClose + 1) === BREAK || afterClose + 1 >= len)) {
+                handleIndents(BLOCK_MAP, indent, start);
+                tokens.push(KEY, start, start);
+                tokens.push(tokenType, contentStart, contentEnd);
+                tokens.push(VALUE, afterClose, afterClose);
+                pos = afterClose + 1;
+            } else {
+                tokens.push(tokenType, contentStart, contentEnd);
+            }
+
         } else { // scalar
             lineStart = false;
             let numSpaces = 0;
@@ -145,9 +186,49 @@ function parseTokens(s, tokens) {
         }
     }
 
+    function processDoubleQuoted(qStart, qEnd) {
+        let result = '';
+        let j = qStart;
+        while (j < qEnd) {
+            const ch = s.charCodeAt(j);
+            if (ch === BACKSLASH) {
+                j++;
+                const esc = s.charCodeAt(j);
+                if (esc === 110) result += '\n';      // \n
+                else if (esc === 116) result += '\t'; // \t
+                else if (esc === 114) result += '\r'; // \r
+                else if (esc === 34) result += '"';   // \"
+                else if (esc === 92) result += '\\';  // \\
+                else if (esc === 117) {               // \uXXXX
+                    result += String.fromCharCode(parseInt(s.slice(j + 1, j + 5), 16));
+                    j += 4;
+                } else {
+                    throw new Error(`Unknown escape sequence "\\${s[j]}" at ${posToLineCol(s, j)}.`);
+                }
+            } else {
+                result += s[j];
+            }
+            j++;
+        }
+        return result;
+    }
+
+    function expectScalar() {
+        if (accept(SCALAR)) return s.slice(start, end);
+        if (accept(SINGLE_QUOTED)) return s.slice(start, end).replaceAll('\'\'', '\'');
+        if (accept(DOUBLE_QUOTED)) return processDoubleQuoted(start, end);
+        throw new Error(`Expected scalar, got ${types[nextType]} at ${posToLineCol(s, tokens[i + 1])}.`);
+    }
+
     function block() {
         if (accept(SCALAR)) {
             return s.slice(start, end);
+
+        } else if (accept(SINGLE_QUOTED)) {
+            return s.slice(start, end).replaceAll('\'\'', '\'');
+
+        } else if (accept(DOUBLE_QUOTED)) {
+            return processDoubleQuoted(start, end);
 
         } else if (accept(BLOCK_SEQ)) {
             const seq = [];
@@ -159,8 +240,7 @@ function parseTokens(s, tokens) {
             const map = {};
             const seen = new Set();
             while (accept(KEY)) {
-                expect(SCALAR);
-                const key = s.slice(start, end);
+                const key = expectScalar();
                 if (seen.has(key)) {
                     throw new Error(`Duplicate key "${key}" at ${posToLineCol(s, start)}.`);
                 }

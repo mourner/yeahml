@@ -7,17 +7,18 @@ A JavaScript parser for a tiny subset of [YAML](https://yaml.org/) — a minimal
 - [x] Key-value pairs (maps)
 - [x] Lists (sequences)
 - [x] Plain string values
-- [ ] Single-quoted string values
-- [ ] Double-quoted string values
+- [x] Single-quoted string values
+- [x] Double-quoted string values
 - [ ] Multi-line string literals
 - [x] Comments
 
 ## No intention to support
 
+- Implicit typing (e.g. `yes` to `true`, numbers, timestamps)
+- Duplicate keys
 - Flow styles (`{foo: bar, ...}`)
 - Anchors and aliases (`&ref`)
 - Explicit tags (`!!int`)
-- Implicit typing (e.g. `yes` to `true`, timestamps)
 - Complex keys (`? foo : bar`)
 - Block headers (`|+`)
 - Folded scalars (`>`)
