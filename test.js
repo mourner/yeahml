@@ -81,15 +81,27 @@ test('tokenize', () => {
         'DOCUMENT_END']);
 });
 
+test('empty document', () => {
+    assert.equal(parse(''), null);
+    assert.equal(parse('\n'), null);
+    assert.equal(parse('# comment\n'), null);
+});
+
+test('document separator', () => {
+    assert.equal(parse('---'), null);
+    assert.deepEqual(parse('---\nfoo: bar'), {foo: 'bar'});
+});
+
 test('bad indentation', () => {
-    // indent doesn't match any open block level
-    assert.throws(() => parse('foo:\n  bar: 1\n baz: 2'), /Bad indentation at line 3/);
-    assert.throws(() => parse('a: 1\n  b: 2\n c: 3'), /Bad indentation at line 3/);
+    // indent doesn't match any open block level; error includes exact line and col
+    assert.throws(() => parse('foo:\n  bar: 1\n baz: 2'), /Bad indentation at line 3, col 2\./);
+    assert.throws(() => parse('a: 1\n  b: 2\n c: 3'), /Bad indentation at line 3, col 2\./);
 });
 
 test('duplicate keys', () => {
-    assert.throws(() => parse('foo: 1\nfoo: 2'), /Duplicate key "foo"/);
-    assert.throws(() => parse('foo:\n  bar: 1\n  bar: 2'), /Duplicate key "bar"/);
+    // error includes key name and exact position of the duplicate
+    assert.throws(() => parse('foo: 1\nfoo: 2'), /Duplicate key "foo" at line 2, col 1\./);
+    assert.throws(() => parse('foo:\n  bar: 1\n  bar: 2'), /Duplicate key "bar" at line 3, col 3\./);
 });
 
 test('parse', () => {

@@ -59,6 +59,10 @@ export function tokenize(s) {
         } else if (c === SPACE) { // spaces; skip
             while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
 
+        } else if (c === HYPHEN && s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === HYPHEN &&
+                   (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK)) { // "---": document separator, skip
+            pos += 2;
+
         } else if (c === HYPHEN && s.charCodeAt(pos) === SPACE) { // "- ": sequence entry
             pos++;
             indent++; // treat sequence entry as indented to support nested sequence on the same indentation
