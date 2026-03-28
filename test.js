@@ -89,9 +89,9 @@ test('trailing whitespace in scalars', () => {
 });
 
 test('multiline plain scalars', () => {
-    assert.throws(() => parse('a\nb'), {message: 'Expected DOCUMENT_END, got SCALAR at line 2, col 1.'});
-    assert.throws(() => parse('foo: bar\nbaz'), {message: 'Expected BLOCK_END, got SCALAR at line 2, col 1.'});
-    assert.throws(() => parse('key: value\n  continuation'), {message: 'Expected BLOCK_END, got SCALAR at line 2, col 3.'});
+    assert.throws(() => parse('a\nb'), {message: 'Expected document end, got scalar at line 2, col 1.'});
+    assert.throws(() => parse('foo: bar\nbaz'), {message: 'Expected block end, got scalar at line 2, col 1.'});
+    assert.throws(() => parse('key: value\n  continuation'), {message: 'Expected block end, got scalar at line 2, col 3.'});
 });
 
 test('literal block strings', () => {

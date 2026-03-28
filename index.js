@@ -23,7 +23,7 @@ const DOUBLE_QUOTED = 9;
 const LITERAL_BLOCK = 10;
 const LITERAL_BLOCK_STRIP = 11;
 
-const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END', 'SINGLE_QUOTED', 'DOUBLE_QUOTED', 'LITERAL_BLOCK', 'LITERAL_BLOCK_STRIP'];
+const types = ['scalar', 'mapping', 'key', 'value', 'sequence', 'sequence entry', 'block end', 'document end', 'quoted scalar', 'quoted scalar', 'literal block', 'literal block'];
 
 const ESCAPES = {
     '0': '\0',
@@ -76,7 +76,6 @@ function tokenize(s) {
         let c = s.charCodeAt(pos++);
 
         if (c === HASH) { // comment
-            lineStart = false;
             while (pos < len && s.charCodeAt(pos) !== BREAK) pos++;
 
         } else if (c === BREAK) { // line break; save indent
@@ -139,12 +138,14 @@ function tokenize(s) {
                 }
             }
             if (pos >= len) throw new Error(`Unterminated string at ${posToLineCol(s, start)}.`);
+
             const contentEnd = pos;
             pos++; // past closing quote
             const tokenType = quote === QUOTE_SINGLE ? SINGLE_QUOTED : DOUBLE_QUOTED;
             // check if it's a map key (": " or ":\n" follows, ignoring spaces)
             let afterClose = pos;
             while (afterClose < len && s.charCodeAt(afterClose) === SPACE) afterClose++;
+
             if (s.charCodeAt(afterClose) === COLON &&
                 (s.charCodeAt(afterClose + 1) === SPACE || s.charCodeAt(afterClose + 1) === BREAK || afterClose + 1 >= len)) {
                 handleIndents(BLOCK_MAP, indent, start);
@@ -164,6 +165,7 @@ function tokenize(s) {
             pos++; // past '\n'
             const contentStart = pos;
             let blockIndent = -1;
+
             while (pos < len) {
                 const lineBegin = pos;
                 while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
@@ -190,14 +192,14 @@ function tokenize(s) {
 
         } else { // scalar
             lineStart = false;
-            let numSpaces = 0;
+            let trailing = 0;
 
             while (pos <= len) {
                 c = s.charCodeAt(pos);
 
                 // ends with line break, comment or EOF: scalar
-                if (c === BREAK || pos === len || (c === HASH && numSpaces > 0)) {
-                    tokens.push(SCALAR, start, pos - numSpaces);
+                if (c === BREAK || pos === len || (c === HASH && trailing > 0)) {
+                    tokens.push(SCALAR, start, pos - trailing);
                     break;
 
                 } else if (c === COLON) { // possible map key
@@ -206,14 +208,14 @@ function tokenize(s) {
                     if (c === SPACE || c === BREAK || pos + 1 >= len) { // ends with ": ", ":\n", or ":<EOF>"
                         handleIndents(BLOCK_MAP, indent, start); // possibly end blocks or start new one
                         tokens.push(KEY, start, start);
-                        tokens.push(SCALAR, start, pos - numSpaces);
+                        tokens.push(SCALAR, start, pos - trailing);
                         tokens.push(VALUE, pos, pos);
                         pos++;
                         break;
                     }
                 }
 
-                numSpaces = (c === SPACE || c === TAB) ? numSpaces + 1 : 0; // track trailing spaces/tabs
+                trailing = (c === SPACE || c === TAB) ? trailing + 1 : 0;
                 pos++;
             }
         }
