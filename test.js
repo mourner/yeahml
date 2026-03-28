@@ -23,10 +23,12 @@ mapping:
   sky: blue
   big sea: green`;
 
-test('empty document', () => {
-    assert.equal(parse(''), null);
+test('empty values', () => {
+    assert.equal(parse(''), null);              // empty document
     assert.equal(parse('\n'), null);
     assert.equal(parse('# comment\n'), null);
+    assert.deepEqual(parse('key:'), {key: ''}); // empty map value to empty string
+    assert.deepEqual(parse('- '), ['']);        // empty sequence entry to empty string
 });
 
 test('document separator', () => {
@@ -112,7 +114,7 @@ test('parse', () => {
     assert.deepEqual(parse(nestedDoc), {
         hello: {
             oneasd: {
-                foo: null,
+                foo: '',
                 baz: 'ff',
                 bar: [
                     {foo: 'bar'},

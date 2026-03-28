@@ -119,7 +119,7 @@ function tokenize(s) {
             let afterClose = pos;
             while (afterClose < len && s.charCodeAt(afterClose) === SPACE) afterClose++;
             if (s.charCodeAt(afterClose) === COLON &&
-                (s.charCodeAt(afterClose + 1) === SPACE || s.charCodeAt(afterClose + 1) === BREAK)) {
+                (s.charCodeAt(afterClose + 1) === SPACE || s.charCodeAt(afterClose + 1) === BREAK || afterClose + 1 >= len)) {
                 handleIndents(BLOCK_MAP, indent, start);
                 tokens.push(KEY, start, start);
                 tokens.push(tokenType, contentStart, contentEnd);
@@ -172,7 +172,7 @@ function tokenize(s) {
                 } else if (c === COLON) { // possible map key
                     c = s.charCodeAt(pos + 1);
 
-                    if (c === SPACE || c === BREAK) { // ends with ": " or ":\n": block key/value pair
+                    if (c === SPACE || c === BREAK || pos + 1 >= len) { // ends with ": ", ":\n", or ":<EOF>"
                         handleIndents(BLOCK_MAP, indent, start); // possibly end blocks or start new one
                         tokens.push(KEY, start, start);
                         tokens.push(SCALAR, start, pos - numSpaces);
@@ -270,7 +270,7 @@ function parseTokens(s, tokens) {
 
         if (accept(BLOCK_SEQ)) {
             const seq = [];
-            while (accept(BLOCK_ENTRY)) seq.push(block());
+            while (accept(BLOCK_ENTRY)) seq.push(block() || '');
             expect(BLOCK_END);
             return seq;
         }
@@ -285,7 +285,7 @@ function parseTokens(s, tokens) {
                 }
                 seen.add(key);
                 expect(VALUE);
-                map[key] = block();
+                map[key] = block() || '';
             }
             expect(BLOCK_END);
             return map;
