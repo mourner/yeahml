@@ -21,6 +21,8 @@ const DOUBLE_QUOTED = 9;
 
 export const types = ['SCALAR', 'BLOCK_MAP', 'KEY', 'VALUE', 'BLOCK_SEQ', 'BLOCK_ENTRY', 'BLOCK_END', 'DOCUMENT_END', 'SINGLE_QUOTED', 'DOUBLE_QUOTED'];
 
+const ESCAPES = {n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\'};
+
 function posToLineCol(s, pos) {
     let line = 1, col = 1;
     for (let i = 0; i < pos; i++) {
@@ -38,15 +40,15 @@ export function tokenize(s) {
     let lineStart = true;
 
     function handleIndents(blockType, blockIndent, blockPos) {
-        if (indents.length === 0 || blockIndent > indents[indents.length - 1]) {
+        if (!indents.length || blockIndent > indents.at(-1)) {
             indents.push(blockIndent);
             tokens.push(blockType, blockPos, blockPos);
         } else {
-            while (indents.length && blockIndent !== indents[indents.length - 1]) {
+            while (indents.length && blockIndent !== indents.at(-1)) {
                 indents.pop();
                 tokens.push(BLOCK_END, blockPos, blockPos);
             }
-            if (indents.length === 0) {
+            if (!indents.length) {
                 throw new Error(`Bad indentation at ${posToLineCol(s, blockPos)}.`);
             }
         }
@@ -114,7 +116,7 @@ export function tokenize(s) {
             let afterClose = pos;
             while (afterClose < len && s.charCodeAt(afterClose) === SPACE) afterClose++;
             if (s.charCodeAt(afterClose) === COLON &&
-                (s.charCodeAt(afterClose + 1) === SPACE || s.charCodeAt(afterClose + 1) === BREAK || afterClose + 1 >= len)) {
+                (s.charCodeAt(afterClose + 1) === SPACE || s.charCodeAt(afterClose + 1) === BREAK)) {
                 handleIndents(BLOCK_MAP, indent, start);
                 tokens.push(KEY, start, start);
                 tokens.push(tokenType, contentStart, contentEnd);
@@ -190,20 +192,16 @@ function parseTokens(s, tokens) {
         let result = '';
         let j = qStart;
         while (j < qEnd) {
-            const ch = s.charCodeAt(j);
-            if (ch === BACKSLASH) {
+            if (s.charCodeAt(j) === BACKSLASH) {
                 j++;
-                const esc = s.charCodeAt(j);
-                if (esc === 110) result += '\n';      // \n
-                else if (esc === 116) result += '\t'; // \t
-                else if (esc === 114) result += '\r'; // \r
-                else if (esc === 34) result += '"';   // \"
-                else if (esc === 92) result += '\\';  // \\
-                else if (esc === 117) {               // \uXXXX
+                const esc = s[j];
+                if (esc === 'u') {
                     result += String.fromCharCode(parseInt(s.slice(j + 1, j + 5), 16));
                     j += 4;
+                } else if (esc in ESCAPES) {
+                    result += ESCAPES[esc];
                 } else {
-                    throw new Error(`Unknown escape sequence "\\${s[j]}" at ${posToLineCol(s, j)}.`);
+                    throw new Error(`Unknown escape sequence "\\${esc}" at ${posToLineCol(s, j)}.`);
                 }
             } else {
                 result += s[j];
@@ -213,30 +211,31 @@ function parseTokens(s, tokens) {
         return result;
     }
 
-    function expectScalar() {
+    function acceptScalar() {
         if (accept(SCALAR)) return s.slice(start, end);
         if (accept(SINGLE_QUOTED)) return s.slice(start, end).replaceAll('\'\'', '\'');
         if (accept(DOUBLE_QUOTED)) return processDoubleQuoted(start, end);
+        return undefined;
+    }
+
+    function expectScalar() {
+        const v = acceptScalar();
+        if (v !== undefined) return v;
         throw new Error(`Expected scalar, got ${types[nextType]} at ${posToLineCol(s, tokens[i + 1])}.`);
     }
 
     function block() {
-        if (accept(SCALAR)) {
-            return s.slice(start, end);
+        const scalar = acceptScalar();
+        if (scalar !== undefined) return scalar;
 
-        } else if (accept(SINGLE_QUOTED)) {
-            return s.slice(start, end).replaceAll('\'\'', '\'');
-
-        } else if (accept(DOUBLE_QUOTED)) {
-            return processDoubleQuoted(start, end);
-
-        } else if (accept(BLOCK_SEQ)) {
+        if (accept(BLOCK_SEQ)) {
             const seq = [];
             while (accept(BLOCK_ENTRY)) seq.push(block());
             expect(BLOCK_END);
             return seq;
+        }
 
-        } else if (accept(BLOCK_MAP)) {
+        if (accept(BLOCK_MAP)) {
             const map = {};
             const seen = new Set();
             while (accept(KEY)) {
@@ -250,8 +249,8 @@ function parseTokens(s, tokens) {
             }
             expect(BLOCK_END);
             return map;
-
         }
+
         return null;
     }
 
