@@ -1,14 +1,14 @@
 # yeahml
 
-A JavaScript parser for a tiny subset of [YAML](https://yaml.org/) — a minimal amount necessary to be useful for static site generators and simple configuration, while being small, strict and unambiguous. Inspired by [StrictYAML](https://github.com/crdoconnor/strictyaml). _Experimental and a work in progress_.
+A JavaScript parser for a tiny subset of [YAML](https://yaml.org/) — a minimal amount necessary to be useful for static site generators and simple configuration, while being small, strict, fast and unambiguous. Inspired by and largely follows [StrictYAML](https://hitchdev.com/strictyaml/features-removed/) philosophy.
+
+[![Node](https://github.com/mourner/yeahml/actions/workflows/node.yml/badge.svg)](https://github.com/mourner/yeahml/actions/workflows/node.yml) [![Simply Awesome](https://img.shields.io/badge/simply-awesome-brightgreen.svg)](https://github.com/mourner/projects)
 
 ## Key elements
 
 - [x] Key-value pairs (maps)
 - [x] Lists (sequences)
-- [x] Plain string values
-- [x] Single-quoted string values
-- [x] Double-quoted string values
+- [x] Plain, single-quoted and double-quoted string values
 - [x] Multi-line string literals (`|` clip, `|-` strip, `>` folded clip, `>-` folded strip)
 - [x] Comments
 
