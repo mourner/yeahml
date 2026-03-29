@@ -37,7 +37,8 @@ const ESCAPES = {
     e: '\x1B',
     '"': '"',
     '/': '/',
-    '\\': '\\'
+    '\\': '\\',
+    '\t': '\t'  // backslash + literal tab → tab
 };
 
 function posToLineCol(s, pos) {
@@ -95,15 +96,15 @@ function tokenize(s) {
             indent = pos - start - 1;
             lineStart = true;
 
-        } else if (c === SPACE) { // spaces; skip
-            while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
+        } else if (c === SPACE || c === TAB) { // spaces/tabs; skip
+            while (pos < len && (s.charCodeAt(pos) === SPACE || s.charCodeAt(pos) === TAB)) pos++;
 
         } else if (lineStart && c === HYPHEN && s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === HYPHEN &&
-                   (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK || s.charCodeAt(pos + 2) === SPACE)) { // "---": document separator, skip
+                   (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK || s.charCodeAt(pos + 2) === SPACE || s.charCodeAt(pos + 2) === TAB)) { // "---": document separator, skip
             pos += 2;
 
         } else if (lineStart && c === PERIOD && s.charCodeAt(pos) === PERIOD && s.charCodeAt(pos + 1) === PERIOD &&
-                   (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK || s.charCodeAt(pos + 2) === SPACE)) { // "...": document end marker
+                   (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK || s.charCodeAt(pos + 2) === SPACE || s.charCodeAt(pos + 2) === TAB)) { // "...": document end marker
             break;
 
         } else if (c === HYPHEN && s.charCodeAt(pos) === SPACE) { // "- ": sequence entry
@@ -204,7 +205,7 @@ function tokenize(s) {
                 } else if (c === COLON) { // possible map key
                     c = s.charCodeAt(pos + 1);
 
-                    if (c === SPACE || c === BREAK || pos + 1 >= len) { // ends with ": ", ":\n", or ":<EOF>"
+                    if (c === SPACE || c === TAB || c === BREAK || pos + 1 >= len) { // ends with ": ", ":\t", ":\n", or ":<EOF>"
                         handleIndents(BLOCK_MAP, indent, start); // possibly end blocks or start new one
                         tokens.push(KEY, start, start);
                         tokens.push(SCALAR, start, pos - trailing);
@@ -254,7 +255,7 @@ function parseTokens(s, tokens) {
     function foldBreak(j, qEnd) {
         let blanks = 0;
         while (j < qEnd) {
-            while (j < qEnd && s.charCodeAt(j) === SPACE) j++;
+            while (j < qEnd && (s.charCodeAt(j) === SPACE || s.charCodeAt(j) === TAB)) j++;
             if (j < qEnd && s.charCodeAt(j) === BREAK) { blanks++; j++; } else break;
         }
         return {text: blanks > 0 ? '\n'.repeat(blanks) : ' ', j};
@@ -269,6 +270,7 @@ function parseTokens(s, tokens) {
                 result += '\'';
                 j += 2;
             } else if (c === BREAK) {
+                result = result.replace(/[ \t]+$/, '');
                 const folded = foldBreak(j + 1, qEnd);
                 result += folded.text;
                 j = folded.j;
@@ -292,12 +294,17 @@ function parseTokens(s, tokens) {
                 } else if (esc === 'u') {
                     result += String.fromCharCode(parseInt(s.slice(j + 1, j + 5), 16));
                     j += 4;
+                } else if (s.charCodeAt(j) === BREAK) { // escaped newline: skip fold entirely
+                    j++;
+                    while (j < qEnd && (s.charCodeAt(j) === SPACE || s.charCodeAt(j) === TAB)) j++;
+                    continue;
                 } else if (esc in ESCAPES) {
                     result += ESCAPES[esc];
                 } else {
                     throw new Error(`Unknown escape sequence "\\${esc}" at ${posToLineCol(s, j)}.`);
                 }
             } else if (s.charCodeAt(j) === BREAK) {
+                result = result.replace(/[ \t]+$/, '');
                 const folded = foldBreak(j + 1, qEnd);
                 result += folded.text;
                 j = folded.j;

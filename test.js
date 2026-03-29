@@ -56,6 +56,7 @@ test('single-quoted strings', () => {
     assert.equal(parse("'foo\n\nbar'"), 'foo\nbar');              // blank line → literal newline
     assert.equal(parse("'foo\n\n\nbar'"), 'foo\n\nbar');          // two blank lines → two newlines
     assert.equal(parse("'it''s\nfine'"), "it's fine");            // '' escape + fold
+    assert.equal(parse("'foo  \n  bar'"), 'foo bar');             // trailing spaces stripped before fold
 });
 
 test('double-quoted strings', () => {
@@ -79,6 +80,11 @@ test('double-quoted strings', () => {
     assert.equal(parse('"spans\nlines"'), 'spans lines');         // newline folds to space
     assert.equal(parse('"foo\n  bar"'), 'foo bar');               // leading indent stripped
     assert.equal(parse('"foo\n\nbar"'), 'foo\nbar');              // blank line → literal newline
+    assert.equal(parse('"foo  \n  bar"'), 'foo bar');            // trailing spaces stripped before fold
+    assert.equal(parse('"foo\n\tbar"'), 'foo bar');              // leading tab stripped on continuation
+    assert.equal(parse('"foo\n\t\nbar"'), 'foo\nbar');           // tab-only line counts as blank
+    assert.equal(parse('"foo\\\nbar"'), 'foobar');               // escaped newline: no output, no space
+    assert.deepEqual(parse('key:\tvalue'), {key: 'value'});      // tab as value separator
 });
 
 test('document separator with content', () => {
