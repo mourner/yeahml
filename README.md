@@ -9,7 +9,7 @@ A JavaScript parser for a tiny subset of [YAML](https://yaml.org/) — a minimal
 - [x] Plain string values
 - [x] Single-quoted string values
 - [x] Double-quoted string values
-- [x] Multi-line string literals (`|` clip, `|-` strip)
+- [x] Multi-line string literals (`|` clip, `|-` strip, `>` folded clip, `>-` folded strip)
 - [x] Comments
 
 ## No intention to support
@@ -20,7 +20,6 @@ A JavaScript parser for a tiny subset of [YAML](https://yaml.org/) — a minimal
 - Anchors and aliases (`&ref`)
 - Explicit tags (`!!int`)
 - Complex keys (`? foo : bar`)
-- Block headers (`|+`)
-- Folded scalars (`>`)
+- Block headers (`|+`, `|2`)
 - Directives (`%YAML 1.2`)
 - Non-UTF-8 encodings

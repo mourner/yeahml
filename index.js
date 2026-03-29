@@ -8,6 +8,7 @@ const QUOTE_SINGLE = 39;
 const QUOTE_DOUBLE = 34;
 const BACKSLASH = 92;
 const PIPE = 124;
+const GREATER = 62;
 const PERIOD = 46;
 
 const SCALAR = 0;
@@ -22,8 +23,10 @@ const SINGLE_QUOTED = 8;
 const DOUBLE_QUOTED = 9;
 const LITERAL_BLOCK = 10;
 const LITERAL_BLOCK_STRIP = 11;
+const FOLDED_BLOCK = 12;
+const FOLDED_BLOCK_STRIP = 13;
 
-const types = ['scalar', 'mapping', 'key', 'value', 'sequence', 'sequence entry', 'block end', 'document end', 'quoted scalar', 'quoted scalar', 'literal block', 'literal block'];
+const types = ['scalar', 'mapping', 'key', 'value', 'sequence', 'sequence entry', 'block end', 'document end', 'quoted scalar', 'quoted scalar', 'literal block', 'literal block', 'folded block', 'folded block'];
 
 const ESCAPES = {
     '0': '\0',
@@ -38,6 +41,7 @@ const ESCAPES = {
     '"': '"',
     '/': '/',
     '\\': '\\',
+    ' ': ' ',   // backslash + space → space
     '\t': '\t'  // backslash + literal tab → tab
 };
 
@@ -56,6 +60,7 @@ function tokenize(s) {
     const len = s.length;
     let indent = 0;
     let lineStart = true;
+    let seqCompact = false; // true when a block scalar immediately follows "- " (compact notation)
 
     function handleIndents(blockType, blockIndent, blockPos) {
         if (indents.length === 0 || blockIndent > indents.at(-1)) {
@@ -95,6 +100,7 @@ function tokenize(s) {
             }
             indent = pos - start - 1;
             lineStart = true;
+            seqCompact = false;
 
         } else if (c === SPACE || c === TAB) { // spaces/tabs; skip
             while (pos < len && (s.charCodeAt(pos) === SPACE || s.charCodeAt(pos) === TAB)) pos++;
@@ -114,6 +120,7 @@ function tokenize(s) {
             handleIndents(BLOCK_SEQ, indent, start); // possibly end blocks or start new one
             tokens.push(BLOCK_ENTRY, start, start);
             indent++; // treat following tokens as indented for compact notation
+            seqCompact = true;
 
         } else if (c === HYPHEN && s.charCodeAt(pos) === BREAK) { // "-\n": indented sequence entry
             lineStart = false;
@@ -153,14 +160,18 @@ function tokenize(s) {
                 tokens.push(tokenType, contentStart, contentEnd);
                 tokens.push(VALUE, afterClose, afterClose);
                 pos = afterClose + 1;
+                seqCompact = false;
             } else {
                 tokens.push(tokenType, contentStart, contentEnd);
             }
 
-        } else if (c === PIPE && (s.charCodeAt(pos) === BREAK ||
-                   (s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === BREAK))) { // literal block scalar
+        } else if ((c === PIPE || c === GREATER) && (s.charCodeAt(pos) === BREAK ||
+                   (s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === BREAK))) { // block scalar (literal | or folded >)
             lineStart = false;
+            const folded = c === GREATER;
             const strip = s.charCodeAt(pos) === HYPHEN;
+            const blockLevel = seqCompact ? indent - 1 : indent; // compact seq entries use one less indent level
+            seqCompact = false;
             if (strip) pos++;
             pos++; // past '\n'
             const contentStart = pos;
@@ -175,7 +186,7 @@ function tokenize(s) {
                     continue;
                 }
                 if (blockIndent === -1) {
-                    if (lineIndent <= indent) { pos = lineBegin; break; } // empty block
+                    if (lineIndent <= blockLevel) { pos = lineBegin; break; } // empty block
                     blockIndent = lineIndent;
                 } else if (lineIndent < blockIndent) { // end of block
                     pos = lineBegin;
@@ -184,7 +195,10 @@ function tokenize(s) {
                 while (pos < len && s.charCodeAt(pos) !== BREAK) pos++;
                 if (pos < len) pos++;
             }
-            tokens.push(strip ? LITERAL_BLOCK_STRIP : LITERAL_BLOCK, contentStart, pos);
+            const blockType = folded ?
+                (strip ? FOLDED_BLOCK_STRIP : FOLDED_BLOCK) :
+                (strip ? LITERAL_BLOCK_STRIP : LITERAL_BLOCK);
+            tokens.push(blockType, contentStart, pos);
             let p = pos;
             while (p < len && s.charCodeAt(p) === SPACE) p++;
             indent = p - pos;
@@ -211,6 +225,7 @@ function tokenize(s) {
                         tokens.push(SCALAR, start, pos - trailing);
                         tokens.push(VALUE, pos, pos);
                         pos++;
+                        seqCompact = false;
                         break;
                     }
                 }
@@ -326,6 +341,32 @@ function parseTokens(s, tokens) {
         return result.replace(/\n*$/, strip ? '' : '\n');
     }
 
+    function parseFoldedBlock(lStart, lEnd, strip) {
+        const lines = s.slice(lStart, lEnd).split('\n');
+        if (lines.at(-1) === '') lines.pop();
+        const first = lines.find(l => l.trimStart() !== '');
+        const blockIndent = first ? first.search(/[^ ]/) : 0;
+        let result = '';
+        let prevType = null; // null | 'regular' | 'blank' | 'indented'
+        for (const rawLine of lines) {
+            const line = rawLine.slice(blockIndent);
+            if (line === '') {
+                result += '\n';
+                prevType = 'blank';
+            } else if (line[0] === ' ') {
+                if (prevType !== null && prevType !== 'blank') result += '\n';
+                result += line;
+                prevType = 'indented';
+            } else {
+                if (prevType === 'regular') result += ' ';
+                else if (prevType === 'indented') result += '\n';
+                result += line;
+                prevType = 'regular';
+            }
+        }
+        return result.replace(/\n*$/, strip ? '' : '\n');
+    }
+
     function acceptScalar() {
         if (accept(SCALAR)) return s.slice(start, end);
         if (accept(SINGLE_QUOTED)) return processSingleQuoted(start, end);
@@ -368,6 +409,8 @@ function parseTokens(s, tokens) {
 
         if (accept(LITERAL_BLOCK)) return parseLiteralBlock(start, end, false);
         if (accept(LITERAL_BLOCK_STRIP)) return parseLiteralBlock(start, end, true);
+        if (accept(FOLDED_BLOCK)) return parseFoldedBlock(start, end, false);
+        if (accept(FOLDED_BLOCK_STRIP)) return parseFoldedBlock(start, end, true);
 
         return null;
     }

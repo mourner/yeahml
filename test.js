@@ -136,6 +136,30 @@ test('literal block strings', () => {
     assert.deepEqual(parse('a: |-\n  text\nb: clip'), {a: 'text', b: 'clip'});
 });
 
+test('folded block strings', () => {
+    // clip (>): folds newlines to spaces, keeps one trailing newline
+    assert.deepEqual(parse('key: >\n  foo\n  bar\n'), {key: 'foo bar\n'});
+    assert.deepEqual(parse('key: >\n  foo\n\n  bar\n'), {key: 'foo\nbar\n'});  // blank line → newline
+    assert.deepEqual(parse('key: >\n  foo\n\n\n  bar\n'), {key: 'foo\n\nbar\n'}); // two blank lines
+
+    // strip (>-): removes all trailing newlines
+    assert.deepEqual(parse('key: >-\n  foo\n  bar\n'), {key: 'foo bar'});
+
+    // more-indented lines not folded
+    assert.deepEqual(parse('key: >\n  foo\n    indented\n  bar\n'), {key: 'foo\n  indented\nbar\n'});
+
+    // empty block
+    assert.deepEqual(parse('key: >\nnext: value'), {key: '\n', next: 'value'});
+    assert.deepEqual(parse('key: >-\nnext: value'), {key: '', next: 'value'});
+
+    // nested
+    assert.deepEqual(parse('outer:\n  key: >\n    inner\n'), {outer: {key: 'inner\n'}});
+
+    // in sequence (compact notation)
+    assert.deepEqual(parse('- >\n  foo\n  bar\n- baz'), ['foo bar\n', 'baz']);
+    assert.deepEqual(parse('- >-\n  foo\n  bar\n- baz'), ['foo bar', 'baz']);
+});
+
 // sequence of maps with nesting
 const seqOfMaps = `
 - foo:
