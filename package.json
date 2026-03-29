@@ -1,12 +1,15 @@
 {
   "name": "@mourner/yeahml",
   "description": "A tiny subset of YAML",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "main": "index.js",
   "types": "index.d.ts",
   "type": "module",
   "sideEffects": false,
-  "files": ["index.js", "index.d.ts"],
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
   "devDependencies": {
     "eslint": "^10.1.0",
     "eslint-config-mourner": "^4.1.0"
@@ -18,5 +21,8 @@
   },
   "author": "Volodymyr Agafonkin",
   "license": "ISC",
-  "keywords": ["yaml", "format"]
+  "keywords": [
+    "yaml",
+    "format"
+  ]
 }
