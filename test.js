@@ -10,6 +10,12 @@ test('empty values', () => {
     assert.deepEqual(parse('- '), ['']); // empty sequence entry to empty string
 });
 
+test('directives', () => {
+    assert.equal(parse('%YAML 1.2\n---\n'), null);
+    assert.deepEqual(parse('%YAML 1.2\n---\nfoo: bar'), {foo: 'bar'});
+    assert.deepEqual(parse('%TAG ! tag:example.com,2000:app/\n---\nfoo: bar'), {foo: 'bar'});
+});
+
 test('document separator', () => {
     assert.equal(parse('---'), null);
     assert.deepEqual(parse('---\nfoo: bar'), {foo: 'bar'});
@@ -157,6 +163,7 @@ test('literal block strings', () => {
     assert.deepEqual(parse('key: |+\n  text\n'), {key: 'text\n'});
     assert.deepEqual(parse('key: |+\n\n'), {key: '\n'});          // single blank → \n
     assert.deepEqual(parse('key: |+\nnext: v'), {key: '', next: 'v'}); // empty keep → ''
+    assert.deepEqual(parse('--- |+\n ab\n \n  \n...\n'), 'ab\n\n \n'); // space-only line is content, not blank
 });
 
 test('block scalar header comments', () => {

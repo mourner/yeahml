@@ -11,6 +11,7 @@ const PIPE = 124;
 const GREATER = 62;
 const PERIOD = 46;
 const PLUS = 43;
+const PERCENT = 37;
 
 const SCALAR = 0;
 const BLOCK_MAP = 1;
@@ -91,7 +92,7 @@ function tokenize(s) {
         const start = pos;
         let c = s.charCodeAt(pos++);
 
-        if (c === HASH) { // comment
+        if (c === HASH || (lineStart && c === PERCENT)) { // comment or directive: skip to end of line
             while (pos < len && s.charCodeAt(pos) !== BREAK) pos++;
 
         } else if (c === BREAK) { // line break; save indent
@@ -356,10 +357,13 @@ function parseTokens(s, tokens) {
     function parseLiteralBlock(lStart, lEnd, strip, keep) {
         const lines = s.slice(lStart, lEnd).split('\n');
         if (lines.at(-1) === '') lines.pop();
-        let trailingBlanks = 0;
-        if (keep) while (lines.length > 0 && /^ *$/.test(lines.at(-1))) { trailingBlanks++; lines.pop(); }
         const first = lines.find(l => l.replace(/^ */, '') !== ''); // only strip leading spaces, not tabs
         const blockIndent = first ? first.search(/[^ ]/) : 0;
+        let trailingBlanks = 0;
+        if (keep && !first) {
+            trailingBlanks = lines.length;
+            lines.length = 0;
+        } else if (keep) while (lines.length > 0 && lines.at(-1).slice(blockIndent) === '') { trailingBlanks++; lines.pop(); }
         const result = lines.map(l => l.slice(blockIndent)).join('\n');
         if (keep) return result + '\n'.repeat(trailingBlanks + (lines.length > 0 ? 1 : 0));
         if (!first) return '';
@@ -369,10 +373,13 @@ function parseTokens(s, tokens) {
     function parseFoldedBlock(lStart, lEnd, strip, keep) {
         const lines = s.slice(lStart, lEnd).split('\n');
         if (lines.at(-1) === '') lines.pop();
-        let trailingBlanks = 0;
-        if (keep) while (lines.length > 0 && /^ *$/.test(lines.at(-1))) { trailingBlanks++; lines.pop(); }
         const first = lines.find(l => l.replace(/^ */, '') !== ''); // only strip leading spaces, not tabs
         const blockIndent = first ? first.search(/[^ ]/) : 0;
+        let trailingBlanks = 0;
+        if (keep && !first) {
+            trailingBlanks = lines.length;
+            lines.length = 0;
+        } else if (keep) while (lines.length > 0 && lines.at(-1).slice(blockIndent) === '') { trailingBlanks++; lines.pop(); }
         let result = '';
         let prevType = null; // null | 'regular' | 'blank' | 'indented'
         for (const rawLine of lines) {

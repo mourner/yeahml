@@ -40,5 +40,4 @@ const result = parse(yamlSource);
 - Explicit tags (`!!int`)
 - Complex keys (`? foo : bar`)
 - Explicit indent indicators (`|2`, `>2`)
-- Directives (`%YAML 1.2`)
 - Non-UTF-8 encodings
