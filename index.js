@@ -113,9 +113,9 @@ function tokenize(s) {
                    (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK || s.charCodeAt(pos + 2) === SPACE || s.charCodeAt(pos + 2) === TAB)) { // "...": document end marker
             break;
 
-        } else if (c === HYPHEN && s.charCodeAt(pos) === SPACE) { // "- ": sequence entry
+        } else if (c === HYPHEN && (s.charCodeAt(pos) === SPACE || s.charCodeAt(pos) === TAB || pos >= len)) { // "- ": sequence entry
             lineStart = false;
-            pos++;
+            if (pos < len) pos++; // past the space/tab (not present at EOF)
             indent++; // treat sequence entry as indented to support nested sequence on the same indentation
             handleIndents(BLOCK_SEQ, indent, start); // possibly end blocks or start new one
             tokens.push(BLOCK_ENTRY, start, start);
@@ -155,6 +155,10 @@ function tokenize(s) {
 
             if (s.charCodeAt(afterClose) === COLON &&
                 (s.charCodeAt(afterClose + 1) === SPACE || s.charCodeAt(afterClose + 1) === BREAK || afterClose + 1 >= len)) {
+                const nlPos = s.indexOf('\n', contentStart);
+                if (nlPos !== -1 && nlPos < contentEnd) {
+                    throw new Error(`Multi-line implicit key at ${posToLineCol(s, start)}.`);
+                }
                 handleIndents(BLOCK_MAP, indent, start);
                 tokens.push(KEY, start, start);
                 tokens.push(tokenType, contentStart, contentEnd);
@@ -170,7 +174,7 @@ function tokenize(s) {
             lineStart = false;
             const folded = c === GREATER;
             const strip = s.charCodeAt(pos) === HYPHEN;
-            const blockLevel = seqCompact ? indent - 1 : indent; // compact seq entries use one less indent level
+            const blockLevel = seqCompact ? indent - 2 : indent; // compact seq entries: blockLevel = raw position of '-'
             seqCompact = false;
             if (strip) pos++;
             pos++; // past '\n'
@@ -299,8 +303,10 @@ function parseTokens(s, tokens) {
     function processDoubleQuoted(qStart, qEnd) {
         let result = '';
         let j = qStart;
+        let rawTrailing = 0; // count of literal (non-escape) trailing whitespace chars
         while (j < qEnd) {
             if (s.charCodeAt(j) === BACKSLASH) {
+                rawTrailing = 0; // escape sequences reset trailing whitespace tracking
                 j++;
                 const esc = s[j];
                 if (esc === 'x') {
@@ -319,13 +325,16 @@ function parseTokens(s, tokens) {
                     throw new Error(`Unknown escape sequence "\\${esc}" at ${posToLineCol(s, j)}.`);
                 }
             } else if (s.charCodeAt(j) === BREAK) {
-                result = result.replace(/[ \t]+$/, '');
+                result = result.slice(0, result.length - rawTrailing); // strip only literal trailing whitespace
+                rawTrailing = 0;
                 const folded = foldBreak(j + 1, qEnd);
                 result += folded.text;
                 j = folded.j;
                 continue;
             } else {
+                const c = s.charCodeAt(j);
                 result += s[j];
+                rawTrailing = (c === SPACE || c === TAB) ? rawTrailing + 1 : 0;
             }
             j++;
         }
@@ -335,7 +344,7 @@ function parseTokens(s, tokens) {
     function parseLiteralBlock(lStart, lEnd, strip) {
         const lines = s.slice(lStart, lEnd).split('\n');
         if (lines.at(-1) === '') lines.pop();
-        const first = lines.find(l => l.trimStart() !== '');
+        const first = lines.find(l => l.replace(/^ */, '') !== ''); // only strip leading spaces, not tabs
         const blockIndent = first ? first.search(/[^ ]/) : 0;
         const result = lines.map(l => l.slice(blockIndent)).join('\n');
         return result.replace(/\n*$/, strip ? '' : '\n');
@@ -344,7 +353,7 @@ function parseTokens(s, tokens) {
     function parseFoldedBlock(lStart, lEnd, strip) {
         const lines = s.slice(lStart, lEnd).split('\n');
         if (lines.at(-1) === '') lines.pop();
-        const first = lines.find(l => l.trimStart() !== '');
+        const first = lines.find(l => l.replace(/^ */, '') !== ''); // only strip leading spaces, not tabs
         const blockIndent = first ? first.search(/[^ ]/) : 0;
         let result = '';
         let prevType = null; // null | 'regular' | 'blank' | 'indented'

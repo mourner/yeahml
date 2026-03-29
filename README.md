@@ -1,18 +1,12 @@
 # yeahml
 
-A JavaScript parser for a tiny subset of [YAML](https://yaml.org/) — a minimal amount necessary to be useful for static site generators and simple configuration, while being small, strict and unambiguous. Inspired by and largely follows [StrictYAML](https://hitchdev.com/strictyaml/features-removed/) philosophy.
+A JavaScript parser for a strict subset of [YAML](https://yaml.org/) — a minimal amount necessary to be useful for static site generators and simple configuration, while being tiny, safe, unambiguous and without dependencies. Inspired by and largely follows the [StrictYAML](https://hitchdev.com/strictyaml/features-removed/) philosophy.
 
 [![Node](https://github.com/mourner/yeahml/actions/workflows/node.yml/badge.svg)](https://github.com/mourner/yeahml/actions/workflows/node.yml) [![Simply Awesome](https://img.shields.io/badge/simply-awesome-brightgreen.svg)](https://github.com/mourner/projects)
 
 ## Usage
 
-Install using NPM:
-
-```bash
-npm install @mourner/yeahml
-```
-
-Then import via ESM and call on a YAML source string:
+Install using NPM (`npm install @mourner/yeahml`), then import via ESM and call on a YAML source string:
 
 ```js
 import {parse} from '@mourner/yeahml';

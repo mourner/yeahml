@@ -29,6 +29,13 @@ test('block sequence with newline entry', () => {
     assert.deepEqual(parse('-\n  foo: bar'), [{foo: 'bar'}]);
 });
 
+test('sequence entry edge cases', () => {
+    assert.deepEqual(parse('-'), ['']); // lone hyphen at EOF → empty entry
+    assert.deepEqual(parse('-\t-1'), ['-1']); // hyphen+tab as entry separator
+    assert.deepEqual(parse('- |\n x\n'), ['x\n']); // compact seq + block scalar at indent 1
+    assert.deepEqual(parse('- |-\n x\n'), ['x']); // compact seq + block scalar strip
+});
+
 test('bad indentation', () => {
     assert.throws(() => parse('foo:\n  bar: 1\n baz: 2'), {message: 'Bad indentation at line 3, col 2.'});
     assert.throws(() => parse('a: 1\n  b: 2\n c: 3'), {message: 'Bad indentation at line 3, col 2.'});
@@ -50,13 +57,14 @@ test('single-quoted strings', () => {
     assert.deepEqual(parse("- 'hello'"), ['hello']);   // quoted value in sequence
 
     assert.throws(() => parse("'unterminated"), {message: 'Unterminated string at line 1, col 1.'});
+    assert.throws(() => parse("'c\n d': 1"), {message: 'Multi-line implicit key at line 1, col 1.'});
 
-    assert.equal(parse("'spans\nlines'"), 'spans lines');         // newline folds to space
-    assert.equal(parse("'foo\n  bar'"), 'foo bar');               // leading indent stripped
-    assert.equal(parse("'foo\n\nbar'"), 'foo\nbar');              // blank line → literal newline
-    assert.equal(parse("'foo\n\n\nbar'"), 'foo\n\nbar');          // two blank lines → two newlines
-    assert.equal(parse("'it''s\nfine'"), "it's fine");            // '' escape + fold
-    assert.equal(parse("'foo  \n  bar'"), 'foo bar');             // trailing spaces stripped before fold
+    assert.equal(parse("'spans\nlines'"), 'spans lines'); // newline folds to space
+    assert.equal(parse("'foo\n  bar'"), 'foo bar'); // leading indent stripped
+    assert.equal(parse("'foo\n\nbar'"), 'foo\nbar'); // blank line → literal newline
+    assert.equal(parse("'foo\n\n\nbar'"), 'foo\n\nbar'); // two blank lines → two newlines
+    assert.equal(parse("'it''s\nfine'"), "it's fine"); // '' escape + fold
+    assert.equal(parse("'foo  \n  bar'"), 'foo bar'); // trailing spaces stripped before fold
 });
 
 test('double-quoted strings', () => {
@@ -71,20 +79,26 @@ test('double-quoted strings', () => {
     assert.deepEqual(parse('- "hello"'), ['hello']); // quoted value in sequence
 
     assert.equal(parse('"back\\/slash"'), 'back/slash');  // \/ escape
-    assert.equal(parse('"bell\\b"'), 'bell\b');           // \b escape
-    assert.equal(parse('"\\x41"'), 'A');                  // \x hex escape
+    assert.equal(parse('"bell\\b"'), 'bell\b'); // \b escape
+    assert.equal(parse('"\\x41"'), 'A'); // \x hex escape
 
     assert.throws(() => parse('"\\q"'), {message: 'Unknown escape sequence "\\q" at line 1, col 3.'});
     assert.throws(() => parse('"unterminated'), {message: 'Unterminated string at line 1, col 1.'});
 
-    assert.equal(parse('"spans\nlines"'), 'spans lines');         // newline folds to space
-    assert.equal(parse('"foo\n  bar"'), 'foo bar');               // leading indent stripped
-    assert.equal(parse('"foo\n\nbar"'), 'foo\nbar');              // blank line → literal newline
-    assert.equal(parse('"foo  \n  bar"'), 'foo bar');            // trailing spaces stripped before fold
-    assert.equal(parse('"foo\n\tbar"'), 'foo bar');              // leading tab stripped on continuation
-    assert.equal(parse('"foo\n\t\nbar"'), 'foo\nbar');           // tab-only line counts as blank
-    assert.equal(parse('"foo\\\nbar"'), 'foobar');               // escaped newline: no output, no space
-    assert.deepEqual(parse('key:\tvalue'), {key: 'value'});      // tab as value separator
+    assert.equal(parse('"spans\nlines"'), 'spans lines'); // newline folds to space
+    assert.equal(parse('"foo\n  bar"'), 'foo bar'); // leading indent stripped
+    assert.equal(parse('"foo\n\nbar"'), 'foo\nbar'); // blank line → literal newline
+    assert.equal(parse('"foo  \n  bar"'), 'foo bar'); // trailing spaces stripped before fold
+    assert.equal(parse('"foo\n\tbar"'), 'foo bar'); // leading tab stripped on continuation
+    assert.equal(parse('"foo\n\t\nbar"'), 'foo\nbar'); // tab-only line counts as blank
+    assert.equal(parse('"foo\\\nbar"'), 'foobar'); // escaped newline: no output, no space
+    assert.deepEqual(parse('key:\tvalue'), {key: 'value'}); // tab as value separator
+
+    assert.equal(parse('"1 trailing\\t\n    tab"'), '1 trailing\t tab'); // escape-produced tab not stripped before fold
+    assert.equal(parse('"2 trailing\\t  \n    tab"'), '2 trailing\t tab'); // escape-produced tab + literal spaces stripped
+    assert.equal(parse('"3 trailing\\\t\n    tab"'), '3 trailing\t tab'); // backslash-tab escape + fold
+
+    assert.throws(() => parse('"c\n d": 1'), {message: 'Multi-line implicit key at line 1, col 1.'});
 });
 
 test('document separator with content', () => {
@@ -134,6 +148,9 @@ test('literal block strings', () => {
 
     // lines between containing indent and block indent end the block
     assert.deepEqual(parse('a: |-\n  text\nb: clip'), {a: 'text', b: 'clip'});
+
+    // tab as content (not indentation): space then tab in block line
+    assert.deepEqual(parse('foo: |\n \t\nbar: 1\n'), {foo: '\t\n', bar: '1'});
 });
 
 test('folded block strings', () => {
