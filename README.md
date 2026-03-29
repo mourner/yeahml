@@ -4,6 +4,36 @@ A JavaScript parser for a tiny subset of [YAML](https://yaml.org/) — a minimal
 
 [![Node](https://github.com/mourner/yeahml/actions/workflows/node.yml/badge.svg)](https://github.com/mourner/yeahml/actions/workflows/node.yml) [![Simply Awesome](https://img.shields.io/badge/simply-awesome-brightgreen.svg)](https://github.com/mourner/projects)
 
+## Usage
+
+Install using NPM:
+
+```bash
+npm install @mourner/yeahml
+```
+
+Then import via ESM and call on a YAML source string:
+
+```js
+import {parse} from '@mourner/yeahml';
+
+const yamlSource = `
+title: My Article
+tags:
+- opinion
+- essay
+date: 2026-03-29
+version: 3`;
+
+const parsed = parse(yamlSource);
+const expected = {
+	title: 'My Article',
+	tags: ['opinion', 'essay'],
+	date: '2026-03-29',
+	version: '3'
+};
+```
+
 ## Key elements
 
 - [x] Key-value pairs (maps)

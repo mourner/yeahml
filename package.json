@@ -1,7 +1,7 @@
 {
-  "name": "yeahml",
+  "name": "@mourner/yeahml",
   "description": "A tiny subset of YAML",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "main": "index.js",
   "type": "module",
   "sideEffects": false,
