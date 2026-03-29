@@ -16,7 +16,7 @@
     "test": "node --test test.js",
     "cov": "node --experimental-test-coverage --test test.js"
   },
-  "author": "Vladimir Agafonkin",
+  "author": "Volodymyr Agafonkin",
   "license": "ISC",
   "keywords": ["yaml", "format"]
 }

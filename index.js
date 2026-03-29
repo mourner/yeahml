@@ -2,16 +2,16 @@ const BREAK = 10;
 const TAB = 9;
 const SPACE = 32;
 const HASH = 35;
-const COLON = 58;
+const PERCENT = 37;
 const HYPHEN = 45;
-const QUOTE_SINGLE = 39;
+const PERIOD = 46;
+const COLON = 58;
+const GREATER = 62;
 const QUOTE_DOUBLE = 34;
+const QUOTE_SINGLE = 39;
+const PLUS = 43;
 const BACKSLASH = 92;
 const PIPE = 124;
-const GREATER = 62;
-const PERIOD = 46;
-const PLUS = 43;
-const PERCENT = 37;
 
 const SCALAR = 0;
 const BLOCK_MAP = 1;
@@ -30,7 +30,10 @@ const FOLDED_BLOCK_STRIP = 13;
 const LITERAL_BLOCK_KEEP = 14;
 const FOLDED_BLOCK_KEEP = 15;
 
-const types = ['scalar', 'mapping', 'key', 'value', 'sequence', 'sequence entry', 'block end', 'document end', 'quoted scalar', 'quoted scalar', 'literal block', 'literal block', 'folded block', 'folded block', 'literal block', 'folded block'];
+const types = [
+    'scalar', 'mapping', 'key', 'value', 'sequence', 'sequence entry', 'block end', 'document end', 'quoted scalar',
+    'quoted scalar', 'literal block', 'literal block', 'folded block', 'folded block', 'literal block', 'folded block'
+];
 
 const ESCAPES = {
     '0': '\0',
@@ -66,6 +69,11 @@ function tokenize(s) {
     let lineStart = true;
     let seqCompact = false; // true when a block scalar immediately follows "- " (compact notation)
 
+    // Returns true if the next two chars equal c and are followed by whitespace or EOF.
+    const isTriple = c => s.charCodeAt(pos) === c && s.charCodeAt(pos + 1) === c &&
+        (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK || s.charCodeAt(pos + 2) === SPACE || s.charCodeAt(pos + 2) === TAB);
+
+    // Returns true if pos points to a valid block scalar header (optional -/+, optional comment, then newline).
     const isBlockScalarHeader = (p) => {
         if (s.charCodeAt(p) === HYPHEN || s.charCodeAt(p) === PLUS) p++;
         while (p < len && s.charCodeAt(p) === SPACE) p++;
@@ -95,7 +103,7 @@ function tokenize(s) {
         if (c === HASH || (lineStart && c === PERCENT)) { // comment or directive: skip to end of line
             while (pos < len && s.charCodeAt(pos) !== BREAK) pos++;
 
-        } else if (c === BREAK) { // line break; save indent
+        } else if (c === BREAK) { // line break; reset indent
             while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
             if (pos < len && s.charCodeAt(pos) === TAB) {
                 // scan ahead: if rest of line is only whitespace, it's a blank line — skip it
@@ -116,19 +124,17 @@ function tokenize(s) {
         } else if (c === SPACE || c === TAB) { // spaces/tabs; skip
             while (pos < len && (s.charCodeAt(pos) === SPACE || s.charCodeAt(pos) === TAB)) pos++;
 
-        } else if (lineStart && c === HYPHEN && s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === HYPHEN &&
-                   (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK || s.charCodeAt(pos + 2) === SPACE || s.charCodeAt(pos + 2) === TAB)) { // "---": document separator, skip
+        } else if (lineStart && isTriple(HYPHEN)) { // "---": document separator, skip
             pos += 2;
 
-        } else if (lineStart && c === PERIOD && s.charCodeAt(pos) === PERIOD && s.charCodeAt(pos + 1) === PERIOD &&
-                   (pos + 2 >= len || s.charCodeAt(pos + 2) === BREAK || s.charCodeAt(pos + 2) === SPACE || s.charCodeAt(pos + 2) === TAB)) { // "...": document end marker
+        } else if (lineStart && isTriple(PERIOD)) { // "...": document end marker
             break;
 
         } else if (c === HYPHEN && (s.charCodeAt(pos) === SPACE || s.charCodeAt(pos) === TAB || pos >= len)) { // "- ": sequence entry
             lineStart = false;
             if (pos < len) pos++; // past the space/tab (not present at EOF)
             indent++; // treat sequence entry as indented to support nested sequence on the same indentation
-            handleIndents(BLOCK_SEQ, indent, start); // possibly end blocks or start new one
+            handleIndents(BLOCK_SEQ, indent, start);
             tokens.push(BLOCK_ENTRY, start, start);
             indent++; // treat following tokens as indented for compact notation
             seqCompact = true;
@@ -160,6 +166,7 @@ function tokenize(s) {
             const contentEnd = pos;
             pos++; // past closing quote
             const tokenType = quote === QUOTE_SINGLE ? SINGLE_QUOTED : DOUBLE_QUOTED;
+
             // check if it's a map key (": " or ":\n" follows, ignoring spaces)
             let afterClose = pos;
             while (afterClose < len && s.charCodeAt(afterClose) === SPACE) afterClose++;
@@ -212,10 +219,13 @@ function tokenize(s) {
                 while (pos < len && s.charCodeAt(pos) !== BREAK) pos++;
                 if (pos < len) pos++;
             }
+
+            // map (folded, strip/keep) → token type
             const blockType = folded ?
                 (strip ? FOLDED_BLOCK_STRIP : keep ? FOLDED_BLOCK_KEEP : FOLDED_BLOCK) :
                 (strip ? LITERAL_BLOCK_STRIP : keep ? LITERAL_BLOCK_KEEP : LITERAL_BLOCK);
             tokens.push(blockType, contentStart, pos);
+
             let p = pos;
             while (p < len && s.charCodeAt(p) === SPACE) p++;
             indent = p - pos;
@@ -228,16 +238,14 @@ function tokenize(s) {
             while (pos <= len) {
                 c = s.charCodeAt(pos);
 
-                // ends with line break, comment or EOF: scalar
-                if (c === BREAK || pos === len || (c === HASH && trailing > 0)) {
+                if (c === BREAK || pos === len || (c === HASH && trailing > 0)) { // end of scalar
                     tokens.push(SCALAR, start, pos - trailing);
                     break;
 
                 } else if (c === COLON) { // possible map key
                     c = s.charCodeAt(pos + 1);
-
-                    if (c === SPACE || c === TAB || c === BREAK || pos + 1 >= len) { // ends with ": ", ":\t", ":\n", or ":<EOF>"
-                        handleIndents(BLOCK_MAP, indent, start); // possibly end blocks or start new one
+                    if (c === SPACE || c === TAB || c === BREAK || pos + 1 >= len) {
+                        handleIndents(BLOCK_MAP, indent, start);
                         tokens.push(KEY, start, start);
                         tokens.push(SCALAR, start, pos - trailing);
                         tokens.push(VALUE, pos, pos);
@@ -253,10 +261,7 @@ function tokenize(s) {
         }
     }
 
-    for (let i = 0; i < indents.length; i++) {
-        tokens.push(BLOCK_END, len, len);
-    }
-
+    for (let i = 0; i < indents.length; i++) tokens.push(BLOCK_END, len, len);
     tokens.push(DOCUMENT_END, len, len);
 
     return tokens;
@@ -284,6 +289,7 @@ function parseTokens(s, tokens) {
         }
     }
 
+    // Fold a line break in a quoted scalar: blank lines become literal newlines, otherwise a single space.
     function foldBreak(j, qEnd) {
         let blanks = 0;
         while (j < qEnd) {
@@ -316,7 +322,8 @@ function parseTokens(s, tokens) {
     function processDoubleQuoted(qStart, qEnd) {
         let result = '';
         let j = qStart;
-        let rawTrailing = 0; // count of literal (non-escape) trailing whitespace chars
+        let rawTrailing = 0; // tracks literal (non-escape-produced) trailing whitespace for fold stripping
+
         while (j < qEnd) {
             if (s.charCodeAt(j) === BACKSLASH) {
                 rawTrailing = 0; // escape sequences reset trailing whitespace tracking
@@ -328,7 +335,7 @@ function parseTokens(s, tokens) {
                 } else if (esc === 'u') {
                     result += String.fromCharCode(parseInt(s.slice(j + 1, j + 5), 16));
                     j += 4;
-                } else if (s.charCodeAt(j) === BREAK) { // escaped newline: skip fold entirely
+                } else if (s.charCodeAt(j) === BREAK) { // escaped newline: discard newline and following indent
                     j++;
                     while (j < qEnd && (s.charCodeAt(j) === SPACE || s.charCodeAt(j) === TAB)) j++;
                     continue;
@@ -337,6 +344,7 @@ function parseTokens(s, tokens) {
                 } else {
                     throw new Error(`Unknown escape sequence "\\${esc}" at ${posToLineCol(s, j)}.`);
                 }
+
             } else if (s.charCodeAt(j) === BREAK) {
                 result = result.slice(0, result.length - rawTrailing); // strip only literal trailing whitespace
                 rawTrailing = 0;
@@ -344,6 +352,7 @@ function parseTokens(s, tokens) {
                 result += folded.text;
                 j = folded.j;
                 continue;
+
             } else {
                 const c = s.charCodeAt(j);
                 result += s[j];
@@ -354,16 +363,27 @@ function parseTokens(s, tokens) {
         return result;
     }
 
-    function parseLiteralBlock(lStart, lEnd, strip, keep) {
+    // Shared setup for both block scalar parsers: split lines, compute indent, handle keep-mode trailing blanks.
+    function blockLines(lStart, lEnd, keep) {
         const lines = s.slice(lStart, lEnd).split('\n');
         if (lines.at(-1) === '') lines.pop();
-        const first = lines.find(l => l.replace(/^ */, '') !== ''); // only strip leading spaces, not tabs
+        const first = lines.find(l => l.replace(/^ */, '') !== ''); // first line with non-space content
         const blockIndent = first ? first.search(/[^ ]/) : 0;
         let trailingBlanks = 0;
         if (keep && !first) {
-            trailingBlanks = lines.length;
+            trailingBlanks = lines.length; // no content: all lines are trailing blanks
             lines.length = 0;
-        } else if (keep) while (lines.length > 0 && lines.at(-1).slice(blockIndent) === '') { trailingBlanks++; lines.pop(); }
+        } else if (keep) {
+            while (lines.length > 0 && lines.at(-1).slice(blockIndent) === '') {
+                trailingBlanks++;
+                lines.pop();
+            }
+        }
+        return {lines, blockIndent, trailingBlanks, first};
+    }
+
+    function parseLiteralBlock(lStart, lEnd, strip, keep) {
+        const {lines, blockIndent, trailingBlanks, first} = blockLines(lStart, lEnd, keep);
         const result = lines.map(l => l.slice(blockIndent)).join('\n');
         if (keep) return result + '\n'.repeat(trailingBlanks + (lines.length > 0 ? 1 : 0));
         if (!first) return '';
@@ -371,15 +391,7 @@ function parseTokens(s, tokens) {
     }
 
     function parseFoldedBlock(lStart, lEnd, strip, keep) {
-        const lines = s.slice(lStart, lEnd).split('\n');
-        if (lines.at(-1) === '') lines.pop();
-        const first = lines.find(l => l.replace(/^ */, '') !== ''); // only strip leading spaces, not tabs
-        const blockIndent = first ? first.search(/[^ ]/) : 0;
-        let trailingBlanks = 0;
-        if (keep && !first) {
-            trailingBlanks = lines.length;
-            lines.length = 0;
-        } else if (keep) while (lines.length > 0 && lines.at(-1).slice(blockIndent) === '') { trailingBlanks++; lines.pop(); }
+        const {lines, blockIndent, trailingBlanks, first} = blockLines(lStart, lEnd, keep);
         let result = '';
         let prevType = null; // null | 'regular' | 'blank' | 'indented'
         for (const rawLine of lines) {
@@ -432,9 +444,7 @@ function parseTokens(s, tokens) {
             const seen = new Set();
             while (accept(KEY)) {
                 const key = expectScalar();
-                if (seen.has(key)) {
-                    throw new Error(`Duplicate key "${key}" at ${posToLineCol(s, start)}.`);
-                }
+                if (seen.has(key)) throw new Error(`Duplicate key "${key}" at ${posToLineCol(s, start)}.`);
                 seen.add(key);
                 expect(VALUE);
                 map[key] = block() || '';
