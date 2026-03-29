@@ -50,7 +50,12 @@ test('single-quoted strings', () => {
     assert.deepEqual(parse("- 'hello'"), ['hello']);   // quoted value in sequence
 
     assert.throws(() => parse("'unterminated"), {message: 'Unterminated string at line 1, col 1.'});
-    assert.throws(() => parse("'spans\nlines'"), {message: 'Unterminated string at line 1, col 1.'});
+
+    assert.equal(parse("'spans\nlines'"), 'spans lines');         // newline folds to space
+    assert.equal(parse("'foo\n  bar'"), 'foo bar');               // leading indent stripped
+    assert.equal(parse("'foo\n\nbar'"), 'foo\nbar');              // blank line → literal newline
+    assert.equal(parse("'foo\n\n\nbar'"), 'foo\n\nbar');          // two blank lines → two newlines
+    assert.equal(parse("'it''s\nfine'"), "it's fine");            // '' escape + fold
 });
 
 test('double-quoted strings', () => {
@@ -70,7 +75,10 @@ test('double-quoted strings', () => {
 
     assert.throws(() => parse('"\\q"'), {message: 'Unknown escape sequence "\\q" at line 1, col 3.'});
     assert.throws(() => parse('"unterminated'), {message: 'Unterminated string at line 1, col 1.'});
-    assert.throws(() => parse('"spans\nlines"'), {message: 'Unterminated string at line 1, col 1.'});
+
+    assert.equal(parse('"spans\nlines"'), 'spans lines');         // newline folds to space
+    assert.equal(parse('"foo\n  bar"'), 'foo bar');               // leading indent stripped
+    assert.equal(parse('"foo\n\nbar"'), 'foo\nbar');              // blank line → literal newline
 });
 
 test('document separator with content', () => {

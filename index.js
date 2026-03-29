@@ -125,7 +125,6 @@ function tokenize(s) {
             const contentStart = pos;
             while (pos < len) {
                 c = s.charCodeAt(pos);
-                if (c === BREAK) throw new Error(`Unterminated string at ${posToLineCol(s, start)}.`);
                 if (c === quote) {
                     if (quote === QUOTE_SINGLE && s.charCodeAt(pos + 1) === QUOTE_SINGLE) {
                         pos += 2; // '' escape in single-quoted strings
@@ -252,6 +251,34 @@ function parseTokens(s, tokens) {
         }
     }
 
+    function foldBreak(j, qEnd) {
+        let blanks = 0;
+        while (j < qEnd) {
+            while (j < qEnd && s.charCodeAt(j) === SPACE) j++;
+            if (j < qEnd && s.charCodeAt(j) === BREAK) { blanks++; j++; } else break;
+        }
+        return {text: blanks > 0 ? '\n'.repeat(blanks) : ' ', j};
+    }
+
+    function processSingleQuoted(qStart, qEnd) {
+        let result = '';
+        let j = qStart;
+        while (j < qEnd) {
+            const c = s.charCodeAt(j);
+            if (c === QUOTE_SINGLE) {
+                result += '\'';
+                j += 2;
+            } else if (c === BREAK) {
+                const folded = foldBreak(j + 1, qEnd);
+                result += folded.text;
+                j = folded.j;
+            } else {
+                result += s[j++];
+            }
+        }
+        return result;
+    }
+
     function processDoubleQuoted(qStart, qEnd) {
         let result = '';
         let j = qStart;
@@ -270,6 +297,11 @@ function parseTokens(s, tokens) {
                 } else {
                     throw new Error(`Unknown escape sequence "\\${esc}" at ${posToLineCol(s, j)}.`);
                 }
+            } else if (s.charCodeAt(j) === BREAK) {
+                const folded = foldBreak(j + 1, qEnd);
+                result += folded.text;
+                j = folded.j;
+                continue;
             } else {
                 result += s[j];
             }
@@ -289,7 +321,7 @@ function parseTokens(s, tokens) {
 
     function acceptScalar() {
         if (accept(SCALAR)) return s.slice(start, end);
-        if (accept(SINGLE_QUOTED)) return s.slice(start, end).replaceAll('\'\'', '\'');
+        if (accept(SINGLE_QUOTED)) return processSingleQuoted(start, end);
         if (accept(DOUBLE_QUOTED)) return processDoubleQuoted(start, end);
         return undefined;
     }
