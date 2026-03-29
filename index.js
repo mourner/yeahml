@@ -65,6 +65,13 @@ function tokenize(s) {
     let lineStart = true;
     let seqCompact = false; // true when a block scalar immediately follows "- " (compact notation)
 
+    const isBlockScalarHeader = (p) => {
+        if (s.charCodeAt(p) === HYPHEN || s.charCodeAt(p) === PLUS) p++;
+        while (p < len && s.charCodeAt(p) === SPACE) p++;
+        if (p < len && s.charCodeAt(p) === HASH) while (p < len && s.charCodeAt(p) !== BREAK) p++;
+        return p >= len || s.charCodeAt(p) === BREAK;
+    };
+
     function handleIndents(blockType, blockIndent, blockPos) {
         if (indents.length === 0 || blockIndent > indents.at(-1)) {
             indents.push(blockIndent);
@@ -172,9 +179,7 @@ function tokenize(s) {
                 tokens.push(tokenType, contentStart, contentEnd);
             }
 
-        } else if ((c === PIPE || c === GREATER) && (s.charCodeAt(pos) === BREAK ||
-                   (s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === BREAK) ||
-                   (s.charCodeAt(pos) === PLUS && s.charCodeAt(pos + 1) === BREAK))) { // block scalar (literal | or folded >)
+        } else if ((c === PIPE || c === GREATER) && isBlockScalarHeader(pos)) { // block scalar (literal | or folded >)
             lineStart = false;
             const folded = c === GREATER;
             const strip = s.charCodeAt(pos) === HYPHEN;
@@ -182,6 +187,8 @@ function tokenize(s) {
             const blockLevel = seqCompact ? indent - 2 : indent; // compact seq entries: blockLevel = raw position of '-'
             seqCompact = false;
             if (strip || keep) pos++;
+            while (pos < len && s.charCodeAt(pos) === SPACE) pos++;
+            if (pos < len && s.charCodeAt(pos) === HASH) while (pos < len && s.charCodeAt(pos) !== BREAK) pos++;
             pos++; // past '\n'
             const contentStart = pos;
             let blockIndent = -1;
@@ -355,6 +362,7 @@ function parseTokens(s, tokens) {
         const blockIndent = first ? first.search(/[^ ]/) : 0;
         const result = lines.map(l => l.slice(blockIndent)).join('\n');
         if (keep) return result + '\n'.repeat(trailingBlanks + (lines.length > 0 ? 1 : 0));
+        if (!first) return '';
         return result.replace(/\n*$/, strip ? '' : '\n');
     }
 
@@ -384,6 +392,7 @@ function parseTokens(s, tokens) {
             }
         }
         if (keep) return result + '\n'.repeat(trailingBlanks + (lines.length > 0 ? 1 : 0));
+        if (!first) return '';
         return result.replace(/\n*$/, strip ? '' : '\n');
     }
 

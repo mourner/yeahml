@@ -134,7 +134,7 @@ test('literal block strings', () => {
     assert.deepEqual(parse('outer:\n  key: |\n    inner\n'), {outer: {key: 'inner\n'}});
 
     // empty block
-    assert.deepEqual(parse('key: |\nnext: value'), {key: '\n', next: 'value'});
+    assert.deepEqual(parse('key: |\nnext: value'), {key: '', next: 'value'});
     assert.deepEqual(parse('key: |-\nnext: value'), {key: '', next: 'value'});
 
     // trailing whitespace-only line at EOF (no final newline)
@@ -159,6 +159,14 @@ test('literal block strings', () => {
     assert.deepEqual(parse('key: |+\nnext: v'), {key: '', next: 'v'}); // empty keep → ''
 });
 
+test('block scalar header comments', () => {
+    assert.deepEqual(parse('key: | # comment\n  content\n'), {key: 'content\n'});
+    assert.deepEqual(parse('key: |- # strip with comment\n  content\n'), {key: 'content'});
+    assert.deepEqual(parse('key: |+ # keep with comment\n  content\n\n'), {key: 'content\n\n'});
+    assert.deepEqual(parse('key: > # comment\n  foo\n  bar\n'), {key: 'foo bar\n'});
+    assert.deepEqual(parse('key: >- # comment\n  foo\n'), {key: 'foo'});
+});
+
 test('folded block strings', () => {
     // clip (>): folds newlines to spaces, keeps one trailing newline
     assert.deepEqual(parse('key: >\n  foo\n  bar\n'), {key: 'foo bar\n'});
@@ -172,7 +180,7 @@ test('folded block strings', () => {
     assert.deepEqual(parse('key: >\n  foo\n    indented\n  bar\n'), {key: 'foo\n  indented\nbar\n'});
 
     // empty block
-    assert.deepEqual(parse('key: >\nnext: value'), {key: '\n', next: 'value'});
+    assert.deepEqual(parse('key: >\nnext: value'), {key: '', next: 'value'});
     assert.deepEqual(parse('key: >-\nnext: value'), {key: '', next: 'value'});
 
     // nested
