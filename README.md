@@ -28,7 +28,7 @@ const result = parse(yamlSource);
 - [x] Key-value pairs (maps)
 - [x] Lists (sequences)
 - [x] Plain, single-quoted and double-quoted string values (including multiline)
-- [x] Multi-line string literals (`|` clip, `|-` strip, `>` folded clip, `>-` folded strip)
+- [x] Multi-line string literals (`|` clip, `|-` strip, `|+` keep, `>` folded clip, `>-` folded strip, `>+` folded keep)
 - [x] Comments
 
 ## No intention to support
@@ -39,6 +39,6 @@ const result = parse(yamlSource);
 - Anchors and aliases (`&ref`)
 - Explicit tags (`!!int`)
 - Complex keys (`? foo : bar`)
-- Block headers (`|+`, `|2`)
+- Explicit indent indicators (`|2`, `>2`)
 - Directives (`%YAML 1.2`)
 - Non-UTF-8 encodings

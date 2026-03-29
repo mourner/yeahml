@@ -10,6 +10,7 @@ const BACKSLASH = 92;
 const PIPE = 124;
 const GREATER = 62;
 const PERIOD = 46;
+const PLUS = 43;
 
 const SCALAR = 0;
 const BLOCK_MAP = 1;
@@ -25,8 +26,10 @@ const LITERAL_BLOCK = 10;
 const LITERAL_BLOCK_STRIP = 11;
 const FOLDED_BLOCK = 12;
 const FOLDED_BLOCK_STRIP = 13;
+const LITERAL_BLOCK_KEEP = 14;
+const FOLDED_BLOCK_KEEP = 15;
 
-const types = ['scalar', 'mapping', 'key', 'value', 'sequence', 'sequence entry', 'block end', 'document end', 'quoted scalar', 'quoted scalar', 'literal block', 'literal block', 'folded block', 'folded block'];
+const types = ['scalar', 'mapping', 'key', 'value', 'sequence', 'sequence entry', 'block end', 'document end', 'quoted scalar', 'quoted scalar', 'literal block', 'literal block', 'folded block', 'folded block', 'literal block', 'folded block'];
 
 const ESCAPES = {
     '0': '\0',
@@ -170,13 +173,15 @@ function tokenize(s) {
             }
 
         } else if ((c === PIPE || c === GREATER) && (s.charCodeAt(pos) === BREAK ||
-                   (s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === BREAK))) { // block scalar (literal | or folded >)
+                   (s.charCodeAt(pos) === HYPHEN && s.charCodeAt(pos + 1) === BREAK) ||
+                   (s.charCodeAt(pos) === PLUS && s.charCodeAt(pos + 1) === BREAK))) { // block scalar (literal | or folded >)
             lineStart = false;
             const folded = c === GREATER;
             const strip = s.charCodeAt(pos) === HYPHEN;
+            const keep = s.charCodeAt(pos) === PLUS;
             const blockLevel = seqCompact ? indent - 2 : indent; // compact seq entries: blockLevel = raw position of '-'
             seqCompact = false;
-            if (strip) pos++;
+            if (strip || keep) pos++;
             pos++; // past '\n'
             const contentStart = pos;
             let blockIndent = -1;
@@ -200,8 +205,8 @@ function tokenize(s) {
                 if (pos < len) pos++;
             }
             const blockType = folded ?
-                (strip ? FOLDED_BLOCK_STRIP : FOLDED_BLOCK) :
-                (strip ? LITERAL_BLOCK_STRIP : LITERAL_BLOCK);
+                (strip ? FOLDED_BLOCK_STRIP : keep ? FOLDED_BLOCK_KEEP : FOLDED_BLOCK) :
+                (strip ? LITERAL_BLOCK_STRIP : keep ? LITERAL_BLOCK_KEEP : LITERAL_BLOCK);
             tokens.push(blockType, contentStart, pos);
             let p = pos;
             while (p < len && s.charCodeAt(p) === SPACE) p++;
@@ -341,18 +346,23 @@ function parseTokens(s, tokens) {
         return result;
     }
 
-    function parseLiteralBlock(lStart, lEnd, strip) {
+    function parseLiteralBlock(lStart, lEnd, strip, keep) {
         const lines = s.slice(lStart, lEnd).split('\n');
         if (lines.at(-1) === '') lines.pop();
+        let trailingBlanks = 0;
+        if (keep) while (lines.length > 0 && /^ *$/.test(lines.at(-1))) { trailingBlanks++; lines.pop(); }
         const first = lines.find(l => l.replace(/^ */, '') !== ''); // only strip leading spaces, not tabs
         const blockIndent = first ? first.search(/[^ ]/) : 0;
         const result = lines.map(l => l.slice(blockIndent)).join('\n');
+        if (keep) return result + '\n'.repeat(trailingBlanks + (lines.length > 0 ? 1 : 0));
         return result.replace(/\n*$/, strip ? '' : '\n');
     }
 
-    function parseFoldedBlock(lStart, lEnd, strip) {
+    function parseFoldedBlock(lStart, lEnd, strip, keep) {
         const lines = s.slice(lStart, lEnd).split('\n');
         if (lines.at(-1) === '') lines.pop();
+        let trailingBlanks = 0;
+        if (keep) while (lines.length > 0 && /^ *$/.test(lines.at(-1))) { trailingBlanks++; lines.pop(); }
         const first = lines.find(l => l.replace(/^ */, '') !== ''); // only strip leading spaces, not tabs
         const blockIndent = first ? first.search(/[^ ]/) : 0;
         let result = '';
@@ -373,6 +383,7 @@ function parseTokens(s, tokens) {
                 prevType = 'regular';
             }
         }
+        if (keep) return result + '\n'.repeat(trailingBlanks + (lines.length > 0 ? 1 : 0));
         return result.replace(/\n*$/, strip ? '' : '\n');
     }
 
@@ -416,10 +427,12 @@ function parseTokens(s, tokens) {
             return map;
         }
 
-        if (accept(LITERAL_BLOCK)) return parseLiteralBlock(start, end, false);
-        if (accept(LITERAL_BLOCK_STRIP)) return parseLiteralBlock(start, end, true);
-        if (accept(FOLDED_BLOCK)) return parseFoldedBlock(start, end, false);
-        if (accept(FOLDED_BLOCK_STRIP)) return parseFoldedBlock(start, end, true);
+        if (accept(LITERAL_BLOCK)) return parseLiteralBlock(start, end, false, false);
+        if (accept(LITERAL_BLOCK_STRIP)) return parseLiteralBlock(start, end, true, false);
+        if (accept(LITERAL_BLOCK_KEEP)) return parseLiteralBlock(start, end, false, true);
+        if (accept(FOLDED_BLOCK)) return parseFoldedBlock(start, end, false, false);
+        if (accept(FOLDED_BLOCK_STRIP)) return parseFoldedBlock(start, end, true, false);
+        if (accept(FOLDED_BLOCK_KEEP)) return parseFoldedBlock(start, end, false, true);
 
         return null;
     }

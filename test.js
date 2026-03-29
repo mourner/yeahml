@@ -151,6 +151,12 @@ test('literal block strings', () => {
 
     // tab as content (not indentation): space then tab in block line
     assert.deepEqual(parse('foo: |\n \t\nbar: 1\n'), {foo: '\t\n', bar: '1'});
+
+    // keep (|+): preserves all trailing newlines
+    assert.deepEqual(parse('key: |+\n  text\n\n\n'), {key: 'text\n\n\n'});
+    assert.deepEqual(parse('key: |+\n  text\n'), {key: 'text\n'});
+    assert.deepEqual(parse('key: |+\n\n'), {key: '\n'});          // single blank → \n
+    assert.deepEqual(parse('key: |+\nnext: v'), {key: '', next: 'v'}); // empty keep → ''
 });
 
 test('folded block strings', () => {
@@ -175,6 +181,11 @@ test('folded block strings', () => {
     // in sequence (compact notation)
     assert.deepEqual(parse('- >\n  foo\n  bar\n- baz'), ['foo bar\n', 'baz']);
     assert.deepEqual(parse('- >-\n  foo\n  bar\n- baz'), ['foo bar', 'baz']);
+
+    // keep (>+): preserves all trailing newlines
+    assert.deepEqual(parse('key: >+\n  foo\n  bar\n\n\n'), {key: 'foo bar\n\n\n'});
+    assert.deepEqual(parse('key: >+\n\n'), {key: '\n'});
+    assert.deepEqual(parse('key: >+\nnext: v'), {key: '', next: 'v'});
 });
 
 // sequence of maps with nesting
