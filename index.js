@@ -469,5 +469,7 @@ function parseTokens(s, tokens) {
 }
 
 export function parse(s) {
-    return parseTokens(s, tokenize(s));
+    // YAML breaks are LF, CRLF, and CR. A raw CR is not part of the value.
+    const src = s.replace(/\r\n?/g, '\n');
+    return parseTokens(src, tokenize(src));
 }

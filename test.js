@@ -2,6 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parse} from './index.js';
 
+test('crlf line breaks are not part of the value', () => {
+    assert.deepEqual(parse('key: bar\r\nnext: 2\r\n'), {key: 'bar', next: '2'});
+    assert.equal(parse('"foo\r\nbar"'), 'foo bar');
+    assert.deepEqual(parse('key: |\r\n  a\r\n  b\r\n'), {key: 'a\nb\n'});
+    assert.equal(parse('"a\\rb"'), 'a\rb');
+});
+
 test('empty values', () => {
     assert.equal(parse(''), null); // empty document
     assert.equal(parse('\n'), null);
