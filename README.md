@@ -26,7 +26,7 @@ const result = parse(yamlSource);
 ## Key elements
 
 - [x] Key-value pairs (maps)
-- [x] Lists (sequences)
+- [x] Lists (sequences), including flat one-line flow sequences (`tags: [foo, bar]`, `tags: []`)
 - [x] Plain, single-quoted and double-quoted string values (including multiline)
 - [x] Multi-line string literals (`|` clip, `|-` strip, `|+` keep, `>` folded clip, `>-` folded strip, `>+` folded keep)
 - [x] Comments
@@ -35,7 +35,7 @@ const result = parse(yamlSource);
 
 - Implicit typing (e.g. `yes` to `true`, numbers, timestamps)
 - Duplicate keys
-- Flow styles (`{foo: bar, ...}`)
+- Flow mappings (`{foo: bar, ...}`), nested or multi-line flow sequences
 - Anchors and aliases (`&ref`)
 - Explicit tags (`!!int`)
 - Complex keys (`? foo : bar`)

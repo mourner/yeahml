@@ -3,6 +3,7 @@ const TAB = 9;
 const SPACE = 32;
 const HASH = 35;
 const PERCENT = 37;
+const COMMA = 44;
 const HYPHEN = 45;
 const PERIOD = 46;
 const COLON = 58;
@@ -10,8 +11,12 @@ const GREATER = 62;
 const QUOTE_DOUBLE = 34;
 const QUOTE_SINGLE = 39;
 const PLUS = 43;
+const BRACKET_OPEN = 91;
 const BACKSLASH = 92;
+const BRACKET_CLOSE = 93;
+const BRACE_OPEN = 123;
 const PIPE = 124;
+const BRACE_CLOSE = 125;
 
 const SCALAR = 0;
 const BLOCK_MAP = 1;
@@ -29,10 +34,13 @@ const FOLDED_BLOCK = 12;
 const FOLDED_BLOCK_STRIP = 13;
 const LITERAL_BLOCK_KEEP = 14;
 const FOLDED_BLOCK_KEEP = 15;
+const FLOW_SEQ = 16;
+const FLOW_SEQ_END = 17;
 
 const types = [
     'scalar', 'mapping', 'key', 'value', 'sequence', 'sequence entry', 'block end', 'document end', 'quoted scalar',
-    'quoted scalar', 'literal block', 'literal block', 'folded block', 'folded block', 'literal block', 'folded block'
+    'quoted scalar', 'literal block', 'literal block', 'folded block', 'folded block', 'literal block', 'folded block',
+    'flow sequence', 'flow sequence end'
 ];
 
 const ESCAPES = {
@@ -86,6 +94,71 @@ function tokenize(s) {
         if (p < len && s.charCodeAt(p) === HASH) while (p < len && s.charCodeAt(p) !== BREAK) p++;
         return p >= len || s.charCodeAt(p) === BREAK;
     };
+
+    // Returns the position of the closing quote for a quoted scalar with content starting at p (len if unterminated).
+    const closingQuote = (p, quote) => {
+        while (p < len) {
+            const c = s.charCodeAt(p);
+            if (c === quote) {
+                if (quote === QUOTE_SINGLE && s.charCodeAt(p + 1) === QUOTE_SINGLE) p += 2; // '' escape
+                else return p;
+            } else {
+                p += quote === QUOTE_DOUBLE && c === BACKSLASH ? 2 : 1; // skip escaped char
+            }
+        }
+        return len;
+    };
+
+    // Tokenizes a flat single-line flow sequence of scalars starting after "[", returning the position after "]".
+    function flowSequence(p) {
+        const fail = (msg) => { throw new Error(`${msg} at ${posToLineCol(s, p)}.`); };
+        const skipSpaces = () => { while (s.charCodeAt(p) === SPACE || s.charCodeAt(p) === TAB) p++; };
+
+        skipSpaces();
+        if (s.charCodeAt(p) === BRACKET_CLOSE) return p + 1; // empty sequence
+
+        while (true) {
+            skipSpaces();
+            const itemStart = p;
+            let c = s.charCodeAt(p);
+
+            if (c === COMMA || c === BRACKET_CLOSE) fail('Empty flow sequence entry');
+
+            if (c === QUOTE_SINGLE || c === QUOTE_DOUBLE) {
+                p = closingQuote(p + 1, c);
+                const nlPos = s.indexOf('\n', itemStart);
+                if (nlPos !== -1 && nlPos < p) { p = nlPos; fail('Unterminated flow sequence'); }
+                if (p >= len) { p = itemStart; fail('Unterminated string'); }
+                tokens.push(c === QUOTE_SINGLE ? SINGLE_QUOTED : DOUBLE_QUOTED, itemStart + 1, p++);
+
+            } else if (c !== HASH && c !== BREAK && p < len) { // plain scalar
+                let end = p;
+                while (p < len) {
+                    c = s.charCodeAt(p);
+                    if (c === COMMA || c === BRACKET_CLOSE || c === BREAK || (c === HASH && end < p)) break;
+                    if (c === BRACKET_OPEN || c === BRACE_OPEN || c === BRACE_CLOSE) {
+                        fail('Nested flow collections are not supported');
+                    }
+                    if (c === COLON) {
+                        const next = s.charCodeAt(p + 1);
+                        if (next === SPACE || next === TAB || next === COMMA || next === BRACKET_CLOSE ||
+                            next === BREAK || p + 1 >= len) fail('Flow mappings are not supported');
+                    }
+                    p++;
+                    if (c !== SPACE && c !== TAB) end = p;
+                }
+                tokens.push(SCALAR, itemStart, end);
+            }
+
+            skipSpaces();
+            c = s.charCodeAt(p);
+            if (c === BRACKET_CLOSE) return p + 1;
+            if (c === COMMA) { p++; continue; }
+            if (c === HASH) fail('Unexpected comment in flow sequence');
+            if (c === BREAK || p >= len) fail('Unterminated flow sequence');
+            fail('Unexpected character in flow sequence');
+        }
+    }
 
     function handleIndents(blockType, blockIndent, blockPos) {
         if (indents.length === 0 || blockIndent > indents.at(-1)) {
@@ -150,23 +223,30 @@ function tokenize(s) {
             handleIndents(BLOCK_SEQ, indent, start);
             tokens.push(BLOCK_ENTRY, start, start);
 
+        } else if (c === BRACKET_OPEN) { // flow sequence (flat, single-line)
+            lineStart = false;
+            tokens.push(FLOW_SEQ, start, start);
+            pos = flowSequence(pos);
+            tokens.push(FLOW_SEQ_END, pos - 1, pos - 1);
+
+            const end = pos;
+            while (pos < len && (s.charCodeAt(pos) === SPACE || s.charCodeAt(pos) === TAB)) pos++;
+            c = s.charCodeAt(pos);
+            if (pos < len && c !== BREAK && !(c === HASH && pos > end)) {
+                throw new Error(`Unexpected character after flow sequence at ${posToLineCol(s, pos)}.`);
+            }
+
+        } else if (c === BRACE_OPEN) {
+            throw new Error(`Flow mappings are not supported at ${posToLineCol(s, start)}.`);
+
+        } else if (c === BRACKET_CLOSE || c === BRACE_CLOSE || c === COMMA) {
+            throw new Error(`Unexpected "${s[start]}" at ${posToLineCol(s, start)}.`);
+
         } else if (c === QUOTE_SINGLE || c === QUOTE_DOUBLE) { // quoted scalar
             lineStart = false;
             const quote = c;
             const contentStart = pos;
-            while (pos < len) {
-                c = s.charCodeAt(pos);
-                if (c === quote) {
-                    if (quote === QUOTE_SINGLE && s.charCodeAt(pos + 1) === QUOTE_SINGLE) {
-                        pos += 2; // '' escape in single-quoted strings
-                    } else {
-                        break; // closing quote found
-                    }
-                } else {
-                    if (quote === QUOTE_DOUBLE && c === BACKSLASH) pos++; // skip escaped char
-                    pos++;
-                }
-            }
+            pos = closingQuote(pos, quote);
             if (pos >= len) throw new Error(`Unterminated string at ${posToLineCol(s, start)}.`);
 
             const contentEnd = pos;
@@ -461,6 +541,12 @@ function parseTokens(s, tokens) {
             }
             expect(BLOCK_END);
             return map;
+        }
+
+        if (accept(FLOW_SEQ)) {
+            const seq = [];
+            while (!accept(FLOW_SEQ_END)) seq.push(expectScalar());
+            return seq;
         }
 
         if (accept(LITERAL_BLOCK)) return parseLiteralBlock(start, end, false, false);

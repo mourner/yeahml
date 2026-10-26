@@ -207,6 +207,41 @@ test('folded block strings', () => {
     assert.deepEqual(parse('key: >+\nnext: v'), {key: '', next: 'v'});
 });
 
+test('flow sequences', () => {
+    assert.deepEqual(parse('tags: [foo, bar]'), {tags: ['foo', 'bar']});
+    assert.deepEqual(parse('tags: []'), {tags: []});
+    assert.deepEqual(parse('tags: [ ]'), {tags: []});
+    assert.deepEqual(parse('tags: [ foo bar ,baz ]'), {tags: ['foo bar', 'baz']}); // whitespace trimmed
+    assert.deepEqual(parse('t: [\'a, b\', "c\\"d", \'it\'\'s\']'), {t: ['a, b', 'c"d', "it's"]}); // quoted entries
+    assert.deepEqual(parse('t: [http://x.com, a#b, -1, 2026-03-29]'), {t: ['http://x.com', 'a#b', '-1', '2026-03-29']});
+    assert.deepEqual(parse('tags: [foo] # comment\nnext: 1'), {tags: ['foo'], next: '1'});
+    assert.deepEqual(parse('- [a, b]\n- c'), [['a', 'b'], 'c']); // as sequence entry
+    assert.deepEqual(parse('[a]'), ['a']); // top-level
+    assert.deepEqual(parse('a: foo [b], c'), {a: 'foo [b], c'}); // brackets inside plain scalars are text
+
+    assert.throws(() => parse('a: [a,,b]'), {message: 'Empty flow sequence entry at line 1, col 7.'});
+    assert.throws(() => parse('a: [,a]'), {message: 'Empty flow sequence entry at line 1, col 5.'});
+    assert.throws(() => parse('a: [a,]'), {message: 'Empty flow sequence entry at line 1, col 7.'}); // trailing comma
+    assert.throws(() => parse('a: [a'), {message: 'Unterminated flow sequence at line 1, col 6.'});
+    assert.throws(() => parse('a: [a,\n  b]'), {message: 'Unterminated flow sequence at line 1, col 7.'}); // multi-line
+    assert.throws(() => parse('a: [\'x\n y\']'), {message: 'Unterminated flow sequence at line 1, col 7.'});
+    assert.throws(() => parse('a: [\'x]'), {message: 'Unterminated string at line 1, col 5.'});
+    assert.throws(() => parse('a: [a #b]'), {message: 'Unexpected comment in flow sequence at line 1, col 7.'});
+    assert.throws(() => parse('a: [\'x\' y]'), {message: 'Unexpected character in flow sequence at line 1, col 9.'});
+    assert.throws(() => parse('a: [[a]]'), {message: 'Nested flow collections are not supported at line 1, col 5.'});
+    assert.throws(() => parse('a: [{x: 1}]'), {message: 'Nested flow collections are not supported at line 1, col 5.'});
+    assert.throws(() => parse('a: [x: 1]'), {message: 'Flow mappings are not supported at line 1, col 6.'});
+    assert.throws(() => parse('a: [a] b'), {message: 'Unexpected character after flow sequence at line 1, col 8.'});
+    assert.throws(() => parse('[a]: b'), {message: 'Unexpected character after flow sequence at line 1, col 4.'});
+});
+
+test('flow mappings and stray flow indicators', () => {
+    assert.throws(() => parse('a: {x: 1}'), {message: 'Flow mappings are not supported at line 1, col 4.'});
+    assert.throws(() => parse('a: {}'), {message: 'Flow mappings are not supported at line 1, col 4.'});
+    assert.throws(() => parse('a: ]'), {message: 'Unexpected "]" at line 1, col 4.'});
+    assert.throws(() => parse('- , x'), {message: 'Unexpected "," at line 1, col 3.'});
+});
+
 // sequence of maps with nesting
 const seqOfMaps = `
 - foo:
