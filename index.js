@@ -49,8 +49,14 @@ const ESCAPES = {
     '/': '/',
     '\\': '\\',
     ' ': ' ',   // backslash + space → space
-    '\t': '\t'  // backslash + literal tab → tab
+    '\t': '\t', // backslash + literal tab → tab
+    N: '\x85',
+    _: '\xA0',
+    L: '\u2028',
+    P: '\u2029'
 };
+
+const HEX_ESCAPES = {x: 2, u: 4, U: 8};
 
 function posToLineCol(s, pos) {
     let line = 1, col = 1;
@@ -329,12 +335,15 @@ function parseTokens(s, tokens) {
                 rawTrailing = 0; // escape sequences reset trailing whitespace tracking
                 j++;
                 const esc = s[j];
-                if (esc === 'x') {
-                    result += String.fromCharCode(parseInt(s.slice(j + 1, j + 3), 16));
-                    j += 2;
-                } else if (esc === 'u') {
-                    result += String.fromCharCode(parseInt(s.slice(j + 1, j + 5), 16));
-                    j += 4;
+                if (esc in HEX_ESCAPES) {
+                    const n = HEX_ESCAPES[esc];
+                    const hex = s.slice(j + 1, Math.min(j + 1 + n, qEnd));
+                    const code = parseInt(hex, 16);
+                    if (j + n >= qEnd || !/^[0-9a-fA-F]+$/.test(hex) || code > 0x10FFFF) {
+                        throw new Error(`Invalid escape sequence "\\${esc}${hex}" at ${posToLineCol(s, j)}.`);
+                    }
+                    result += String.fromCodePoint(code);
+                    j += n;
                 } else if (s.charCodeAt(j) === BREAK) { // escaped newline: discard newline and following indent
                     j++;
                     while (j < qEnd && (s.charCodeAt(j) === SPACE || s.charCodeAt(j) === TAB)) j++;
@@ -447,7 +456,8 @@ function parseTokens(s, tokens) {
                 if (seen.has(key)) throw new Error(`Duplicate key "${key}" at ${posToLineCol(s, start)}.`);
                 seen.add(key);
                 expect(VALUE);
-                map[key] = block() || '';
+                const value = block() || '';
+                if (key !== '__proto__') map[key] = value; // skip to avoid setting the prototype
             }
             expect(BLOCK_END);
             return map;
@@ -469,5 +479,7 @@ function parseTokens(s, tokens) {
 }
 
 export function parse(s) {
+    if (s.charCodeAt(0) === 0xFEFF) s = s.slice(1); // byte order mark
+    if (s.includes('\r')) s = s.replace(/\r\n?/g, '\n'); // normalize CRLF and CR line breaks
     return parseTokens(s, tokenize(s));
 }

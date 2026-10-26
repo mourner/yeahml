@@ -2,7 +2,7 @@
 
 A JavaScript parser for a strict subset of [YAML](https://yaml.org/) — a minimal amount necessary to be useful for static site generators and simple configuration, while being tiny, safe, unambiguous and without dependencies. Inspired by and largely follows the [StrictYAML](https://hitchdev.com/strictyaml/features-removed/) philosophy.
 
-[![Node](https://github.com/mourner/yeahml/actions/workflows/node.yml/badge.svg)](https://github.com/mourner/yeahml/actions/workflows/node.yml) [![Simply Awesome](https://img.shields.io/badge/simply-awesome-brightgreen.svg)](https://github.com/mourner/projects)
+[![Node](https://github.com/mourner/yeahml/actions/workflows/node.yml/badge.svg)](https://github.com/mourner/yeahml/actions/workflows/node.yml) [![Bundle size](https://deno.bundlejs.com/badge?q=@mourner/yeahml)](https://bundlejs.com/?q=@mourner/yeahml) [![Simply Awesome](https://img.shields.io/badge/simply-awesome-brightgreen.svg)](https://github.com/mourner/projects)
 
 ## Usage
 

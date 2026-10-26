@@ -11,8 +11,8 @@
     "index.d.ts"
   ],
   "devDependencies": {
-    "eslint": "^10.1.0",
-    "eslint-config-mourner": "^4.1.0"
+    "eslint": "^10.13.0",
+    "eslint-config-mourner": "^5.0.2"
   },
   "scripts": {
     "pretest": "eslint index.js test.js",

@@ -89,6 +89,10 @@ test('double-quoted strings', () => {
     assert.equal(parse('"\\x41"'), 'A'); // \x hex escape
 
     assert.throws(() => parse('"\\q"'), {message: 'Unknown escape sequence "\\q" at line 1, col 3.'});
+    assert.equal(parse('"\\u00e9\\U0001F600"'), 'é😀'); // \u and \U escapes
+    assert.equal(parse('"\\N\\_\\L\\P"'), '\x85\xA0\u2028\u2029');
+    assert.throws(() => parse('"\\x4"'), {message: 'Invalid escape sequence "\\x4" at line 1, col 3.'});
+    assert.throws(() => parse('"\\u00zz"'), {message: 'Invalid escape sequence "\\u00zz" at line 1, col 3.'});
     assert.throws(() => parse('"unterminated'), {message: 'Unterminated string at line 1, col 1.'});
 
     assert.equal(parse('"spans\nlines"'), 'spans lines'); // newline folds to space
@@ -243,4 +247,17 @@ test('parse', () => {
             'big sea': 'green'
         }
     });
+});
+
+test('CRLF line breaks and BOM', () => {
+    assert.deepEqual(parse('a: 1\r\nb:\r\n- x\r\n- y\r\n'), {a: '1', b: ['x', 'y']});
+    assert.deepEqual(parse('a: |\r\n  x\r\n  y\r\nb: "q\r\n  r"\r\n'), {a: 'x\ny\n', b: 'q r'});
+    assert.deepEqual(parse('a: 1\rb: 2'), {a: '1', b: '2'});
+    assert.deepEqual(parse('\uFEFFa: 1'), {a: '1'});
+});
+
+test('__proto__ key', () => {
+    const result = parse('__proto__:\n  polluted: yes\nfoo: bar');
+    assert.equal(Object.getPrototypeOf(result), Object.prototype);
+    assert.deepEqual(result, {foo: 'bar'});
 });
