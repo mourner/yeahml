@@ -42,6 +42,25 @@ test('sequence entry edge cases', () => {
     assert.deepEqual(parse('- |-\n x\n'), ['x']); // compact seq + block scalar strip
 });
 
+test('sequence indentation', () => {
+    assert.deepEqual(parse('- a\n-\n  b'), ['a', 'b']); // "-\n" entry after a compact one
+    assert.deepEqual(parse('-\n  a\n- b'), ['a', 'b']);
+    assert.deepEqual(parse('-\n foo: bar'), [{foo: 'bar'}]); // content indented by one past "-"
+    assert.deepEqual(parse('-   a: b\n    c: d'), [{a: 'b', c: 'd'}]); // several spaces after "-"
+    assert.deepEqual(parse('-  - x\n   - y'), [['x', 'y']]);
+    assert.deepEqual(parse(' a: 1\n b: 2'), {a: '1', b: '2'}); // indented first line
+    assert.deepEqual(parse(' - a: 1\n   b: 2\n -\n   c: 3'), [{a: '1', b: '2'}, {c: '3'}]);
+});
+
+test('keys and entries inside values', () => {
+    const msg = 'Unexpected key in a value (values containing ": " must be quoted) at line 1, col 8.';
+    assert.throws(() => parse('title: Foo: The Sequel'), {message: msg});
+    assert.deepEqual(parse('title: "Foo: The Sequel"'), {title: 'Foo: The Sequel'});
+    assert.throws(() => parse("a: 'b': c"), {message: 'Unexpected key in a value (values containing ": " must be quoted) at line 1, col 4.'});
+    assert.throws(() => parse('a: - b'), {message: 'Unexpected sequence entry in a value at line 1, col 4.'});
+    assert.deepEqual(parse('- a: b'), [{a: 'b'}]);
+});
+
 test('bad indentation', () => {
     assert.throws(() => parse('foo:\n  bar: 1\n baz: 2'), {message: 'Bad indentation at line 3, col 2.'});
     assert.throws(() => parse('a: 1\n  b: 2\n c: 3'), {message: 'Bad indentation at line 3, col 2.'});
@@ -64,6 +83,9 @@ test('single-quoted strings', () => {
 
     assert.throws(() => parse("'unterminated"), {message: 'Unterminated string at line 1, col 1.'});
     assert.throws(() => parse("'c\n d': 1"), {message: 'Multi-line implicit key at line 1, col 1.'});
+    assert.deepEqual(parse("'a':\tb"), {a: 'b'}); // tab after quoted key
+    assert.throws(() => parse('key: "a" b'), {message: 'Unexpected character after quoted scalar at line 1, col 10.'});
+    assert.throws(() => parse('key: "a"# c'), {message: 'Unexpected character after quoted scalar at line 1, col 9.'});
 
     assert.equal(parse("'spans\nlines'"), 'spans lines'); // newline folds to space
     assert.equal(parse("'foo\n  bar'"), 'foo bar'); // leading indent stripped
@@ -102,6 +124,7 @@ test('double-quoted strings', () => {
     assert.equal(parse('"foo\n\tbar"'), 'foo bar'); // leading tab stripped on continuation
     assert.equal(parse('"foo\n\t\nbar"'), 'foo\nbar'); // tab-only line counts as blank
     assert.equal(parse('"foo\\\nbar"'), 'foobar'); // escaped newline: no output, no space
+    assert.equal(parse('"foo\\\n\n  bar"'), 'foo\nbar'); // blank lines after an escaped newline are kept
     assert.deepEqual(parse('key:\tvalue'), {key: 'value'}); // tab as value separator
 
     assert.equal(parse('"1 trailing\\t\n    tab"'), '1 trailing\t tab'); // escape-produced tab not stripped before fold
@@ -113,7 +136,8 @@ test('double-quoted strings', () => {
 
 test('document separator with content', () => {
     assert.deepEqual(parse('--- |\n  content\n'), 'content\n'); // --- followed by space then content
-    assert.deepEqual(parse('--- foo: bar'), {foo: 'bar'});
+    assert.deepEqual(parse('--- foo'), 'foo');
+    assert.throws(() => parse('--- foo: bar'), {message: 'Unexpected key in a value (values containing ": " must be quoted) at line 1, col 5.'});
 });
 
 test('document end marker', () => {
@@ -170,6 +194,13 @@ test('literal block strings', () => {
     assert.deepEqual(parse('--- |+\n ab\n \n  \n...\n'), 'ab\n\n \n'); // space-only line is content, not blank
 });
 
+test('block scalar edge cases', () => {
+    assert.deepEqual(parse('--- >\nline1\nline2\n'), 'line1 line2\n'); // zero-indented top-level block
+    assert.deepEqual(parse('--- |\na\n...\n'), 'a\n'); // ended by a document marker
+    assert.throws(() => parse('key: |2\n  x\n'), {message: 'Invalid block scalar header at line 1, col 6.'});
+    assert.throws(() => parse('key: >foo'), {message: 'Invalid block scalar header at line 1, col 6.'});
+});
+
 test('block scalar header comments', () => {
     assert.deepEqual(parse('key: | # comment\n  content\n'), {key: 'content\n'});
     assert.deepEqual(parse('key: |- # strip with comment\n  content\n'), {key: 'content'});
@@ -201,6 +232,10 @@ test('folded block strings', () => {
     assert.deepEqual(parse('- >\n  foo\n  bar\n- baz'), ['foo bar\n', 'baz']);
     assert.deepEqual(parse('- >-\n  foo\n  bar\n- baz'), ['foo bar', 'baz']);
 
+    // line breaks around more-indented lines are kept, including before blank lines
+    assert.deepEqual(parse('key: >\n a\n\n  b\n'), {key: 'a\n\n b\n'});
+    assert.deepEqual(parse('key: >\n  a\n   b\n\n  c\n'), {key: 'a\n b\n\nc\n'});
+
     // keep (>+): preserves all trailing newlines
     assert.deepEqual(parse('key: >+\n  foo\n  bar\n\n\n'), {key: 'foo bar\n\n\n'});
     assert.deepEqual(parse('key: >+\n\n'), {key: '\n'});
@@ -231,6 +266,7 @@ test('flow sequences', () => {
     assert.throws(() => parse('a: [[a]]'), {message: 'Nested flow collections are not supported at line 1, col 5.'});
     assert.throws(() => parse('a: [{x: 1}]'), {message: 'Nested flow collections are not supported at line 1, col 5.'});
     assert.throws(() => parse('a: [x: 1]'), {message: 'Flow mappings are not supported at line 1, col 6.'});
+    assert.throws(() => parse('a: [-]'), {message: 'Unexpected "-" in flow sequence at line 1, col 5.'});
     assert.throws(() => parse('a: [a] b'), {message: 'Unexpected character after flow sequence at line 1, col 8.'});
     assert.throws(() => parse('[a]: b'), {message: 'Unexpected character after flow sequence at line 1, col 4.'});
 });
