@@ -27,7 +27,7 @@ const result = parse(yamlSource);
 
 - [x] Key-value pairs (maps)
 - [x] Lists (sequences), including flat one-line flow sequences (`tags: [foo, bar]`, `tags: []`)
-- [x] Plain, single-quoted and double-quoted string values (including multiline)
+- [x] Plain, single-quoted and double-quoted string values (including multi-line, folded like in YAML)
 - [x] Multi-line string literals (`|` clip, `|-` strip, `|+` keep, `>` folded clip, `>-` folded strip, `>+` folded keep)
 - [x] Comments
 

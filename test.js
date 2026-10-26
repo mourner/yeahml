@@ -63,7 +63,7 @@ test('keys and entries inside values', () => {
 
 test('bad indentation', () => {
     assert.throws(() => parse('foo:\n  bar: 1\n baz: 2'), {message: 'Bad indentation at line 3, col 2.'});
-    assert.throws(() => parse('a: 1\n  b: 2\n c: 3'), {message: 'Bad indentation at line 3, col 2.'});
+    assert.throws(() => parse('a: 1\n  b: 2\n c: 3'), {message: 'Unexpected key in a value (values containing ": " must be quoted) at line 2, col 3.'});
 });
 
 test('duplicate keys', () => {
@@ -151,9 +151,21 @@ test('trailing whitespace in scalars', () => {
 });
 
 test('multiline plain scalars', () => {
-    assert.throws(() => parse('a\nb'), {message: 'Expected document end, got scalar at line 2, col 1.'});
+    assert.equal(parse('a\nb'), 'a b');
+    assert.equal(parse('--- foo\nbar'), 'foo bar');
+    assert.deepEqual(parse('key: value\n  continuation'), {key: 'value continuation'});
+    assert.deepEqual(parse('a: long\n  wrapped  \n\n  \t\n  text # c\nb: 1'), {a: 'long wrapped\n\ntext', b: '1'}); // blank lines → newlines
+    assert.deepEqual(parse('- a\n  b\n- c'), ['a b', 'c']);
+    assert.deepEqual(parse('a:\n- b\n  c\nd: e'), {a: ['b c'], d: 'e'});
+    assert.deepEqual(parse('a: b\n  - c'), {a: 'b - c'});
+    assert.deepEqual(parse('a: b\n  \tc'), {a: 'b c'});
+    assert.deepEqual(parse('a: b\n  c\n...\nd'), {a: 'b c'});
+
     assert.throws(() => parse('foo: bar\nbaz'), {message: 'Expected block end, got scalar at line 2, col 1.'});
-    assert.throws(() => parse('key: value\n  continuation'), {message: 'Expected block end, got scalar at line 2, col 3.'});
+    assert.throws(() => parse('a: b\n  c: d'), {message: 'Unexpected key in a value (values containing ": " must be quoted) at line 2, col 3.'});
+    assert.throws(() => parse('a\n b: c'), {message: 'Multi-line implicit key at line 1, col 1.'});
+    assert.throws(() => parse('a: b # c\n  d'), {message: 'Expected block end, got scalar at line 2, col 3.'});
+    assert.throws(() => parse('a: b\n  # c\n  d'), {message: 'Expected block end, got scalar at line 3, col 3.'});
 });
 
 test('literal block strings', () => {
@@ -256,7 +268,9 @@ test('flow sequences', () => {
 
     assert.throws(() => parse('a: [a,,b]'), {message: 'Empty flow sequence entry at line 1, col 7.'});
     assert.throws(() => parse('a: [,a]'), {message: 'Empty flow sequence entry at line 1, col 5.'});
-    assert.throws(() => parse('a: [a,]'), {message: 'Empty flow sequence entry at line 1, col 7.'}); // trailing comma
+    assert.deepEqual(parse('a: [a, b, ]'), {a: ['a', 'b']}); // trailing comma
+    assert.throws(() => parse('a: [,]'), {message: 'Empty flow sequence entry at line 1, col 5.'});
+    assert.throws(() => parse('a: [a,,]'), {message: 'Empty flow sequence entry at line 1, col 7.'});
     assert.throws(() => parse('a: [a'), {message: 'Unterminated flow sequence at line 1, col 6.'});
     assert.throws(() => parse('a: [a,\n  b]'), {message: 'Unterminated flow sequence at line 1, col 7.'}); // multi-line
     assert.throws(() => parse('a: [\'x\n y\']'), {message: 'Unterminated flow sequence at line 1, col 7.'});

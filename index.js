@@ -59,7 +59,8 @@ const ESCAPES = {
 
 const HEX_ESCAPES = {x: 2, u: 4, U: 8};
 
-// A line break with surrounding whitespace and any following blank lines, folded in quoted scalars.
+// A line break with surrounding whitespace and any following blank lines, folded in multi-line scalars.
+const FOLD_RE = /[ \t]*\n[ \t\n]*/g;
 const SINGLE_QUOTED_RE = /''|[ \t]*\n[ \t\n]*/g;
 // Same, plus escapes; matching left to right keeps escaped whitespace (e.g. "\t") from being trimmed by a fold.
 const DOUBLE_QUOTED_RE = /\\(x[^]{0,2}|u[^]{0,4}|U[^]{0,8}|\n[ \t\n]*|[^])|[ \t]*\n[ \t\n]*/g;
@@ -166,7 +167,12 @@ function tokenize(s) {
             skipSpaces();
             c = s.charCodeAt(p);
             if (c === BRACKET_CLOSE) return p + 1;
-            if (c === COMMA) { p++; continue; }
+            if (c === COMMA) {
+                p++;
+                skipSpaces();
+                if (s.charCodeAt(p) === BRACKET_CLOSE) return p + 1; // trailing comma
+                continue;
+            }
             if (c === HASH) throw syntaxError(s, 'Unexpected comment in flow sequence', p);
             if (c === BREAK || p >= len) throw syntaxError(s, 'Unterminated flow sequence', p);
             throw syntaxError(s, 'Unexpected character in flow sequence', p);
@@ -188,6 +194,24 @@ function tokenize(s) {
             }
             if (indents.length === 0) throw syntaxError(s, 'Bad indentation', blockPos);
         }
+    }
+
+    // Returns the content start of the line continuing a plain scalar that ends at the line break p, or -1
+    // if the next non-blank line isn't indented past the parent node, starts a comment or is a document marker.
+    function plainContinuation(p) {
+        const parentCol = indents.length ? indents.at(-1) >> 1 : -1;
+        while (p < len) {
+            const lineBegin = ++p;
+            while (s.charCodeAt(p) === SPACE) p++;
+            const col = p - lineBegin;
+            while (isWhite(s.charCodeAt(p))) p++;
+            const c = s.charCodeAt(p);
+            if (c === BREAK) continue; // blank line
+            if (p >= len || col <= parentCol || c === HASH) return -1;
+            if (col === 0 && (isMarker(p, '---') || isMarker(p, '...'))) return -1;
+            return p;
+        }
+        return -1;
     }
 
     function pushKey(start, keyType, keyStart, keyEnd, colon) {
@@ -313,16 +337,26 @@ function tokenize(s) {
         } else { // plain scalar
             lineStart = false;
             let trailing = 0;
+            let lineContent = start; // content start of the current line of a multi-line scalar
 
             while (pos <= len) {
                 c = s.charCodeAt(pos);
 
+                if (c === BREAK) {
+                    const next = plainContinuation(pos);
+                    if (next !== -1) {
+                        pos = lineContent = next;
+                        trailing = 0;
+                        continue;
+                    }
+                }
                 if (c === BREAK || pos === len || (c === HASH && trailing > 0)) { // end of scalar
                     tokens.push(SCALAR, start, pos - trailing);
                     break;
                 }
                 if (c === COLON && isBlank(pos + 1)) { // map key
-                    pushKey(start, SCALAR, start, pos - trailing, pos);
+                    if (lineContent !== start && !inValue) throw syntaxError(s, 'Multi-line implicit key', start);
+                    pushKey(lineContent, SCALAR, start, pos - trailing, pos);
                     pos++;
                     break;
                 }
@@ -419,7 +453,10 @@ function parseTokens(s, tokens) {
     }
 
     function acceptScalar() {
-        if (accept(SCALAR)) return s.slice(start, end);
+        if (accept(SCALAR)) {
+            const v = s.slice(start, end);
+            return v.includes('\n') ? v.replace(FOLD_RE, fold) : v;
+        }
         if (accept(SINGLE_QUOTED)) return s.slice(start, end).replace(SINGLE_QUOTED_RE, m => m === '\'\'' ? '\'' : fold(m));
         if (accept(DOUBLE_QUOTED)) return processDoubleQuoted(start, end);
         return undefined;
